@@ -1,0 +1,9 @@
+# Allow-list: this folder also holds a personal Apple Health export.
+# Everything is ignored unless explicitly listed below.
+*
+!.gitignore
+!README.md
+!LICENSE
+!build_running_data.py
+!server.py
+!running.html

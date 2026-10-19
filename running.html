@@ -1,0 +1,1578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running Log</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3f0; --surface-1: #fcfcfb; --surface-2: #f0efeb; --border: #e3e2dd; --grid: #ecebe7;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7c7b76;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6;
+  --elev: #a9a8a1; --accent-soft: #cde2fb; --band: rgba(42, 120, 214, 0.08);
+  --z1: #86b6ef; --z2: #5598e7; --z3: #2a78d6; --z4: #1c5cab; --z5: #104281;
+  --heat-0: #ecebe7; --heat-1: #b7d3f6; --heat-2: #6da7ec; --heat-3: #2a78d6; --heat-4: #184f95;
+  --chat-w: 400px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface-1: #1a1a19; --surface-2: #222220; --border: #2c2c2a; --grid: #262624;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8e8d86;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --series-5: #d55181; --series-6: #008300; --series-7: #9085e9;
+    --elev: #6b6a65; --accent-soft: #1c3557; --band: rgba(57, 135, 229, 0.12);
+    --z1: #184f95; --z2: #256abf; --z3: #3987e5; --z4: #6da7ec; --z5: #b7d3f6;
+    --heat-0: #262624; --heat-1: #184f95; --heat-2: #256abf; --heat-3: #3987e5; --heat-4: #86b6ef;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110; --surface-1: #1a1a19; --surface-2: #222220; --border: #2c2c2a; --grid: #262624;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8e8d86;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9;
+  --elev: #6b6a65; --accent-soft: #1c3557; --band: rgba(57, 135, 229, 0.12);
+  --z1: #184f95; --z2: #256abf; --z3: #3987e5; --z4: #6da7ec; --z5: #b7d3f6;
+  --heat-0: #262624; --heat-1: #184f95; --heat-2: #256abf; --heat-3: #3987e5; --heat-4: #86b6ef;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--text-primary);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+button, select, input, textarea { font: inherit; color: inherit; }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) var(--chat-w); min-height: 100vh; }
+.app.chat-closed { grid-template-columns: minmax(0, 1fr); }
+.app.chat-closed #chat { display: none; }
+main { min-width: 0; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 80px; }
+
+/* ---------- header & tabs ---------- */
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+h1 { font-size: 24px; letter-spacing: -0.02em; margin: 0; }
+.sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; color: var(--text-secondary); font-size: 13px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"], .seg button[aria-selected="true"] { background: var(--accent-soft); color: var(--text-primary); font-weight: 600; }
+.btn { border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+select.btn { padding-right: 8px; }
+
+/* ---------- cards & grid ---------- */
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(12, 1fr); }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.card h2 { font-size: 14px; margin: 0 0 2px; font-weight: 600; }
+.card .hint { color: var(--text-muted); font-size: 12px; margin: 0 0 12px; }
+.card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.span-12 { grid-column: span 12; } .span-8 { grid-column: span 8; } .span-7 { grid-column: span 7; } .span-6 { grid-column: span 6; }
+.span-5 { grid-column: span 5; } .span-4 { grid-column: span 4; }
+@media (max-width: 1000px) { .span-8, .span-7, .span-6, .span-5, .span-4 { grid-column: span 12; } }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.kpi .label { color: var(--text-secondary); font-size: 12px; }
+.kpi .value { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; }
+.kpi .value small { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+.kpi .note { color: var(--text-muted); font-size: 12px; }
+.chart { position: relative; height: 240px; }
+.chart.sm { height: 160px; }
+.chart.xs { height: 120px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; }
+.form-grid h3 { font-size: 12px; font-weight: 600; margin: 0; color: var(--text-secondary); }
+.form-grid .now { font-size: 18px; font-weight: 650; }
+.form-grid .now small { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+.pbs { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; margin: 0; }
+.pbs dt { color: var(--text-secondary); }
+.pbs dd { margin: 0; font-weight: 600; text-align: right; }
+.pbs dd span { display: block; font-weight: 400; color: var(--text-muted); font-size: 12px; }
+.map { height: 420px; border-radius: 8px; z-index: 0; }
+.map.sm { height: 340px; }
+.map.dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+.heat-wrap { overflow-x: auto; }
+.heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 13px); gap: 3px; width: max-content; }
+.heat i, .dow i { width: 13px; height: 13px; border-radius: 3px; background: var(--heat-0); display: block; }
+[data-l="1"] { background: var(--heat-1) !important; } [data-l="2"] { background: var(--heat-2) !important; }
+[data-l="3"] { background: var(--heat-3) !important; } [data-l="4"] { background: var(--heat-4) !important; }
+.heat i:hover, .dow i:hover { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+.dow { display: grid; grid-template-columns: 34px repeat(18, 1fr); gap: 3px; font-size: 11px; color: var(--text-muted); align-items: center; }
+.dow i { width: auto; height: 18px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-top: 10px; align-items: center; }
+.legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.legend .ln { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: 3px; }
+.table-wrap { overflow-x: auto; }
+.table-wrap.tall { max-height: 520px; overflow-y: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-secondary); font-weight: 600; z-index: 1; }
+th.sortable { cursor: pointer; user-select: none; }
+th[aria-sort="ascending"]::after { content: " ↑"; } th[aria-sort="descending"]::after { content: " ↓"; }
+tbody tr.click { cursor: pointer; }
+tbody tr.click:hover, tbody tr.hl { background: var(--surface-2); }
+td.bar { position: relative; }
+td.bar::before { content: ""; position: absolute; right: 10px; bottom: 3px; height: 3px; width: calc(var(--w, 0) * (100% - 20px)); background: var(--series-1); opacity: .55; border-radius: 2px; }
+td.bar span { position: relative; z-index: 1; }
+td.best span { font-weight: 700; }
+.empty { color: var(--text-muted); padding: 30px 0; text-align: center; }
+#tip { position: fixed; pointer-events: none; background: var(--text-primary); color: var(--surface-1); font-size: 12px; padding: 5px 8px; border-radius: 6px; z-index: 2000; white-space: nowrap; }
+.cmp-check { width: 15px; height: 15px; accent-color: var(--series-1); cursor: pointer; vertical-align: -2px; }
+.compare-bar {
+  position: sticky; bottom: 16px; z-index: 50; margin-top: 14px; display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  background: var(--text-primary); color: var(--surface-1); padding: 10px 14px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.18);
+}
+.compare-bar .btn { background: transparent; color: var(--surface-1); border-color: color-mix(in srgb, var(--surface-1) 35%, transparent); }
+.compare-bar .btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+
+/* ---------- run & compare ---------- */
+.run-picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.run-picker select { min-width: 0; flex: 1 1 260px; max-width: 420px; }
+.stat-row { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.stat-row div { font-size: 12px; color: var(--text-secondary); }
+.stat-row b { display: block; font-size: 18px; color: var(--text-primary); font-weight: 650; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip { border: 1px solid var(--border); background: var(--surface-2); border-radius: 999px; padding: 5px 11px; font-size: 12px; color: var(--text-secondary); }
+.chip b { color: var(--text-primary); font-weight: 600; }
+.metric-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.metric-toggles label { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--text-secondary); user-select: none; }
+.metric-toggles input { display: none; }
+.metric-toggles label:has(input:checked) { background: var(--surface-2); color: var(--text-primary); border-color: var(--text-muted); }
+.metric-toggles .sw { width: 10px; height: 10px; border-radius: 3px; }
+.readout { display: flex; flex-wrap: wrap; gap: 4px 18px; min-height: 40px; align-items: center; padding: 8px 12px; background: var(--surface-2); border-radius: 8px; font-size: 13px; margin: 10px 0 6px; }
+.readout .k { color: var(--text-muted); font-size: 11px; display: block; }
+.readout b { font-weight: 650; }
+.readout .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+.lane { margin-top: 4px; }
+.lane-title { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); font-weight: 600; margin-top: 6px; }
+.lane-title span:last-child { font-weight: 400; color: var(--text-muted); }
+.lane .chart { height: 112px; }
+.overlay-chart { height: 360px; }
+.run-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.run-chip { white-space: nowrap; display: inline-flex; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13px; background: var(--surface-1); }
+.run-chip .sw { width: 10px; height: 10px; border-radius: 3px; }
+.run-chip .rm { border: 0; background: var(--surface-2); border-radius: 999px; width: 22px; height: 22px; cursor: pointer; color: var(--text-secondary); }
+.insights { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.insight { display: flex; flex-direction: column; gap: 6px; }
+.insight .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+.insight h3 { margin: 0; font-size: 15px; }
+.insight p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.insight .ask { margin-top: auto; align-self: flex-start; border: 0; background: none; color: var(--series-1); cursor: pointer; padding: 4px 0 0; font-size: 12px; font-weight: 600; }
+.ask-link { border: 0; background: none; color: var(--series-1); cursor: pointer; font-size: 12px; font-weight: 600; padding: 0; }
+.note { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+
+/* ---------- chat ---------- */
+#chat {
+  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
+  background: var(--surface-1); border-left: 1px solid var(--border); min-width: 0;
+}
+.chat-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
+.chat-head h2 { font-size: 15px; margin: 0; flex: 1; }
+.chat-head select, .chat-head button { font-size: 12px; padding: 4px 8px; }
+.chat-ctx { padding: 8px 14px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.chat-ctx b { color: var(--text-secondary); font-weight: 600; }
+#msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.msg { font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.msg.user { align-self: flex-end; background: var(--accent-soft); padding: 8px 12px; border-radius: 12px 12px 3px 12px; max-width: 88%; white-space: pre-wrap; }
+.msg.assistant { align-self: stretch; }
+.msg.assistant p { margin: 0 0 8px; }
+.msg.assistant ul, .msg.assistant ol { margin: 0 0 8px; padding-left: 20px; }
+.msg.assistant table { font-size: 12px; margin: 4px 0 10px; display: block; overflow-x: auto; }
+.msg.assistant th, .msg.assistant td { padding: 4px 8px; }
+.msg.assistant code { background: var(--surface-2); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+.msg.assistant pre { background: var(--surface-2); padding: 8px; border-radius: 6px; overflow-x: auto; }
+.msg.assistant h1, .msg.assistant h2, .msg.assistant h3 { font-size: 14px; margin: 10px 0 6px; }
+.msg.error { color: var(--series-2); font-size: 12px; white-space: pre-wrap; }
+.tools { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.tools div { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tools div::before { content: "› "; }
+.typing { color: var(--text-muted); font-size: 12px; }
+.typing::after { content: "…"; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+.suggest { display: flex; flex-direction: column; gap: 6px; }
+.suggest button { text-align: left; border: 1px solid var(--border); background: var(--surface-1); border-radius: 10px; padding: 8px 10px; cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
+.suggest button:hover { background: var(--surface-2); color: var(--text-primary); }
+.chat-intro { color: var(--text-muted); font-size: 12.5px; }
+.chat-input { border-top: 1px solid var(--border); padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; align-items: flex-end; }
+.chat-input textarea { flex: 1; resize: none; border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 9px 11px; min-height: 40px; max-height: 160px; font-size: 13.5px; }
+.chat-input textarea:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
+#chatFab { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 60; border-radius: 999px; padding: 10px 16px; box-shadow: 0 6px 24px rgba(0,0,0,.2); }
+@media (max-width: 1100px) {
+  .app, .app.chat-closed { grid-template-columns: minmax(0, 1fr); }
+  #chat { position: fixed; right: 0; top: 0; bottom: 0; width: min(420px, 100vw); z-index: 100; box-shadow: -10px 0 40px rgba(0,0,0,.2); }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+<main>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Running Log</h1>
+      <div class="sub" id="sub">Loading…</div>
+    </div>
+    <div class="toolbar">
+      <div class="seg" id="tabs" role="tablist">
+        <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+        <button role="tab" data-tab="insights">Insights</button>
+        <button role="tab" data-tab="run">Run</button>
+        <button role="tab" data-tab="compare">Compare</button>
+      </div>
+      <div class="seg" id="range" role="group" aria-label="Date range">
+        <button data-days="30">30D</button>
+        <button data-days="90">3M</button>
+        <button data-days="182">6M</button>
+        <button data-days="365" aria-pressed="true">1Y</button>
+        <button data-days="0">All</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================= OVERVIEW ======================= -->
+  <section id="tab-overview">
+    <div class="kpis" id="kpis"></div>
+    <div class="grid">
+      <div class="card span-8">
+        <h2>Weekly mileage</h2>
+        <p class="hint">Miles per week (Mon–Sun)</p>
+        <div class="chart"><canvas id="weekly"></canvas></div>
+      </div>
+      <div class="card span-4">
+        <h2>Personal bests</h2>
+        <p class="hint">Fastest continuous efforts within the selected range</p>
+        <dl class="pbs" id="pbs"></dl>
+      </div>
+      <div class="card span-12">
+        <h2>Last 12 months</h2>
+        <p class="hint">Daily miles run</p>
+        <div class="heat-wrap tipzone"><div class="heat" id="heat"></div></div>
+        <div class="legend" id="heatLegend"></div>
+      </div>
+      <div class="card span-8">
+        <h2>Pace</h2>
+        <p class="hint">Each dot is a run (min/mi, faster is higher); line is the 10-run average. Click a dot to open it.</p>
+        <div class="chart"><canvas id="pace"></canvas></div>
+      </div>
+      <div class="card span-4">
+        <h2>Heart-rate zones</h2>
+        <p class="hint">Share of running time per month</p>
+        <div class="chart"><canvas id="zones"></canvas></div>
+        <div class="legend" id="zoneLegend"></div>
+      </div>
+      <div class="card span-6">
+        <h2>VO₂ max</h2>
+        <p class="hint">Apple Watch estimate, mL/kg·min</p>
+        <div class="chart sm"><canvas id="vo2"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Resting heart rate</h2>
+        <p class="hint">7-day average, bpm (lower usually means fitter)</p>
+        <div class="chart sm"><canvas id="rhr"></canvas></div>
+      </div>
+      <div class="card span-12">
+        <h2>Running form</h2>
+        <p class="hint">Monthly averages from Apple Watch running metrics</p>
+        <div class="form-grid" id="form"></div>
+      </div>
+      <div class="card span-12">
+        <h2>Routes</h2>
+        <p class="hint" id="mapHint"></p>
+        <div class="map" id="ovMap"></div>
+      </div>
+      <div class="card span-12">
+        <h2>All runs</h2>
+        <p class="hint">Click a row to open the run; tick up to 4 runs to compare them</p>
+        <div class="table-wrap tall"><table id="table"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= INSIGHTS ======================= -->
+  <section id="tab-insights" hidden>
+    <div class="insights" id="insightCards"></div>
+    <div class="grid" style="margin-top:14px">
+      <div class="card span-8">
+        <div class="card-head"><div><h2>Fitness &amp; fatigue</h2>
+        <p class="hint">Training load from heart-rate zones: fitness is the 42-day trend, fatigue the 7-day</p></div></div>
+        <div class="chart"><canvas id="ctl"></canvas></div>
+        <div class="legend"><span><span class="ln" style="background:var(--series-1)"></span>Fitness (42-day)</span><span><span class="ln" style="background:var(--series-2)"></span>Fatigue (7-day)</span></div>
+      </div>
+      <div class="card span-4">
+        <h2>Race predictor</h2>
+        <p class="hint">From your best efforts in the last 90 days (Riegel formula)</p>
+        <div class="table-wrap"><table id="predict"></table></div>
+        <p class="note">Predictions assume training for the distance. Longer races are less reliable from short efforts.</p>
+      </div>
+      <div class="card span-6">
+        <h2>Form</h2>
+        <p class="hint">Fitness minus fatigue. Above 0: fresh. Below −20: heavy fatigue.</p>
+        <div class="chart sm"><canvas id="tsb"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Mileage ramp</h2>
+        <p class="hint">Last 7 days ÷ 28-day weekly average. Shaded band 0.8–1.3 is the usual safe zone.</p>
+        <div class="chart sm"><canvas id="acwr"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Aerobic efficiency</h2>
+        <p class="hint">Speed per heartbeat (m/min ÷ bpm) on runs ≥ 2 mi. Rising = fitter.</p>
+        <div class="chart sm"><canvas id="ef"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Zone 2 pace</h2>
+        <p class="hint">Median pace while in heart-rate zone 2. Faster at the same effort = aerobic gains.</p>
+        <div class="chart sm"><canvas id="z2"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Cardiac drift</h2>
+        <p class="hint">Aerobic decoupling on runs ≥ 30 min. Above 5% suggests the pace outran your aerobic base.</p>
+        <div class="chart sm"><canvas id="decouple"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <div class="card-head"><div><h2>Best-effort progression</h2><p class="hint">Fastest continuous effort in each run; line is your all-time best so far</p></div>
+          <div class="seg" id="beSel"><button data-k="1mi" aria-pressed="true">1 mi</button><button data-k="5k">5K</button><button data-k="10k">10K</button></div></div>
+        <div class="chart sm"><canvas id="beChart"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Heat vs pace</h2>
+        <p class="hint">Outdoor runs: temperature (°F) against average pace</p>
+        <div class="chart sm"><canvas id="heatPace"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Heat vs heart rate</h2>
+        <p class="hint">Outdoor runs: temperature (°F) against average heart rate</p>
+        <div class="chart sm"><canvas id="heatHr"></canvas></div>
+      </div>
+      <div class="card span-12">
+        <h2>When you run</h2>
+        <p class="hint">Number of runs by weekday and start hour</p>
+        <div class="table-wrap tipzone"><div class="dow" id="dow"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= RUN ======================= -->
+  <section id="tab-run" hidden>
+    <div class="run-picker">
+      <button class="btn" id="prevRun" title="Older run">‹</button>
+      <select class="btn" id="runSelect" aria-label="Choose run"></select>
+      <button class="btn" id="nextRun" title="Newer run">›</button>
+      <button class="btn" id="runAddCompare">+ Compare</button>
+      <button class="btn" id="runSimilar">Same-route runs</button>
+      <button class="btn primary" id="runAsk">Ask Claude about this run</button>
+    </div>
+    <div class="grid">
+      <div class="card span-12">
+        <h2 id="runTitle"></h2>
+        <p class="hint" id="runSub"></p>
+        <div class="stat-row" id="runStats"></div>
+        <div class="chips" id="runChips"></div>
+      </div>
+      <div class="card span-12">
+        <div class="card-head">
+          <div><h2>Metrics along the run</h2><p class="hint">Hover anywhere to read every metric at that point; the map marker follows.</p></div>
+          <div class="toolbar">
+            <div class="seg" id="runMode"><button data-m="stack" aria-pressed="true">Stacked</button><button data-m="overlay">Overlay</button><button data-m="mile">Per mile</button></div>
+          </div>
+        </div>
+        <div class="metric-toggles" id="runMetrics"></div>
+        <div class="readout" id="runReadout"></div>
+        <div id="runLanes"></div>
+      </div>
+      <div class="card span-7">
+        <h2>Mile by mile</h2>
+        <p class="hint">Bars show each value relative to the run's range; bold = best mile. Hover a row to find it on the map.</p>
+        <div class="table-wrap"><table id="mileTable"></table></div>
+      </div>
+      <div class="card span-5">
+        <div class="card-head"><div><h2>Route</h2><p class="hint" id="runMapHint">Colored by pace</p></div>
+          <div class="seg" id="mapColor"><button data-k="pace" aria-pressed="true">Pace</button><button data-k="hr">HR</button><button data-k="ele">Elev</button></div></div>
+        <div class="map sm" id="runMap"></div>
+        <div class="legend" id="runMapLegend"></div>
+      </div>
+      <div class="card span-6">
+        <h2>Heart-rate zones</h2>
+        <p class="hint">Minutes in each zone</p>
+        <div class="chart sm"><canvas id="runZones"></canvas></div>
+      </div>
+      <div class="card span-6">
+        <h2>Versus your typical run</h2>
+        <p class="hint">This run against your median for runs of similar distance (±20%)</p>
+        <div class="table-wrap"><table id="runVsTypical"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= COMPARE ======================= -->
+  <section id="tab-compare" hidden>
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-head">
+        <div><h2>Runs to compare</h2><p class="hint">Up to 4. Add from here, from the run table, or with “+ Compare” on a run.</p></div>
+        <div class="toolbar">
+          <select class="btn" id="cmpAdd" aria-label="Add a run"></select>
+          <button class="btn" id="cmpClear">Clear</button>
+          <button class="btn primary" id="cmpAsk">Ask Claude to compare</button>
+        </div>
+      </div>
+      <div class="run-chips" id="cmpChips"></div>
+    </div>
+    <div id="cmpBody">
+      <div class="grid">
+        <div class="card span-12">
+          <div class="card-head">
+            <div><h2>Overlaid by distance</h2><p class="hint">Hover to read each run at the same point. Time gap shows seconds behind (+) or ahead (−) of the first run.</p></div>
+          </div>
+          <div class="metric-toggles" id="cmpMetrics"></div>
+          <div class="readout" id="cmpReadout"></div>
+          <div id="cmpLanes"></div>
+        </div>
+        <div class="card span-7">
+          <h2>Side by side</h2>
+          <p class="hint">Bold marks the best value in each row</p>
+          <div class="table-wrap"><table id="cmpTable"></table></div>
+        </div>
+        <div class="card span-5">
+          <h2>Routes</h2>
+          <p class="hint">Each run in its color</p>
+          <div class="map sm" id="cmpMap"></div>
+        </div>
+        <div class="card span-12">
+          <h2>Mile splits</h2>
+          <p class="hint">Pace per mile, min/mi (taller = faster)</p>
+          <div class="chart"><canvas id="cmpSplits"></canvas></div>
+          <div class="legend" id="cmpSplitLegend"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card empty" id="cmpEmpty">Pick at least two runs to compare.</div>
+  </section>
+
+  <div class="compare-bar" id="compareBar" hidden>
+    <span id="compareBarText"></span>
+    <span class="toolbar"><button class="btn" id="compareBarClear">Clear</button><button class="btn primary" id="compareBarGo">Compare →</button></span>
+  </div>
+</div>
+</main>
+
+<!-- ======================= CHAT ======================= -->
+<aside id="chat" aria-label="Claude chat">
+  <div class="chat-head">
+    <h2>Ask Claude</h2>
+    <select class="btn" id="chatModel" title="Model">
+      <option value="">Default model</option>
+      <option value="opus">Opus</option>
+      <option value="sonnet">Sonnet</option>
+      <option value="haiku">Haiku</option>
+    </select>
+    <button class="btn" id="chatNew" title="Start a new conversation">New</button>
+    <button class="btn" id="chatClose" title="Hide chat">✕</button>
+  </div>
+  <div class="chat-ctx" id="chatCtx"></div>
+  <div id="msgs"></div>
+  <form class="chat-input" id="chatForm">
+    <textarea id="chatText" rows="1" placeholder="Ask about your running…"></textarea>
+    <button class="btn primary" id="chatSend" type="submit">Send</button>
+  </form>
+</aside>
+</div>
+<button class="btn primary" id="chatFab" hidden>Ask Claude</button>
+<div id="tip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<script>
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+const DAY = 864e5;
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtPace = s => { if (s == null || !isFinite(s)) return "–"; s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const fmtDur = s => { if (s == null) return "–"; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = Math.round(s % 60);
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`; };
+const fmtDurShort = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h ${m}m` : `${m}m`; };
+const fmtDate = (d, o = { month: "short", day: "numeric", year: "numeric" }) => d.toLocaleDateString(undefined, o);
+const mean = a => { a = a.filter(v => v != null && isFinite(v)); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; };
+const median = a => { a = a.filter(v => v != null).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; };
+const pctl = (a, p) => { a = a.filter(v => v != null).sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : null; };
+const monthKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+const monthLabel = k => { const [y, m] = k.split("-"); return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "short", year: "2-digit" }); };
+const pct = (a, b) => (a - b) / b * 100;
+const signed = (v, d = 0) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+const ZONES = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"];
+const RANGE_LABEL = { 30: "Last 30 days", 90: "Last 3 months", 182: "Last 6 months", 365: "Last 12 months", 0: "All time" };
+function startOfWeek(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+function isDark() { const t = document.documentElement.dataset.theme; return t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches); }
+function slot(i) { return css(`--series-${i}`); }
+function alpha(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+function nearestIdx(arr, x) { // arr sorted ascending (nulls not allowed)
+  let lo = 0, hi = arr.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < x) lo = mid + 1; else hi = mid; }
+  return lo > 0 && Math.abs(arr[lo - 1] - x) < Math.abs(arr[lo] - x) ? lo - 1 : lo;
+}
+
+/* ---------- metric definitions (color follows the metric, everywhere) ---------- */
+const METRICS = {
+  pace:   { label: "Pace", unit: "/mi", fmt: fmtPace, slot: 1, reverse: true },
+  hr:     { label: "Heart rate", unit: "bpm", fmt: v => Math.round(v), slot: 2 },
+  power:  { label: "Power", unit: "W", fmt: v => Math.round(v), slot: 3 },
+  cad:    { label: "Cadence", unit: "spm", fmt: v => Math.round(v), slot: 4 },
+  ele:    { label: "Elevation", unit: "ft", fmt: v => Math.round(v), elev: true },
+  gct:    { label: "Ground contact", unit: "ms", fmt: v => Math.round(v), slot: 5 },
+  stride: { label: "Stride length", unit: "m", fmt: v => v.toFixed(2), slot: 6 },
+  vo:     { label: "Vertical osc.", unit: "cm", fmt: v => v.toFixed(1), slot: 7 },
+};
+const metricColor = k => METRICS[k].elev ? css("--elev") : slot(METRICS[k].slot);
+
+/* =====================================================================
+   State
+   ===================================================================== */
+let DATA, RUNS, BY_ID;
+const S = { tab: "overview", rangeDays: 365, runId: null, compare: [], sort: { key: "date", dir: -1 },
+  runMetrics: ["pace", "hr", "ele", "power"], runMode: "stack", mapColor: "pace",
+  cmpMetrics: ["pace", "hr", "ele", "gap"], be: "1mi" };
+const streams = {};
+const charts = {};
+async function getStream(id) {
+  if (!streams[id]) streams[id] = fetch(`data/streams/${id}.json`).then(r => r.ok ? r.json() : null).catch(() => null);
+  return streams[id];
+}
+function inRange() {
+  if (!S.rangeDays) return RUNS;
+  const cut = Date.now() - S.rangeDays * DAY;
+  return RUNS.filter(r => r.date.getTime() >= cut);
+}
+function trendInRange(key) {
+  const cut = S.rangeDays ? Date.now() - S.rangeDays * DAY : 0;
+  return (DATA.trends[key] || []).map(([d, v]) => ({ x: new Date(d + "T12:00").getTime(), y: v })).filter(p => p.x >= cut);
+}
+function runLabel(r) { return `${fmtDate(r.date)} · ${r.dist?.toFixed(2) ?? "?"} mi · ${fmtPace(r.pace)}/mi`; }
+
+/* =====================================================================
+   Chart plumbing
+   ===================================================================== */
+function tooltipStyle() {
+  return { backgroundColor: css("--text-primary"), titleColor: css("--surface-1"), bodyColor: css("--surface-1"),
+    padding: 8, cornerRadius: 6, displayColors: false, titleFont: { weight: "600" } };
+}
+function baseOpts(extra = {}) {
+  const grid = css("--grid"), muted = css("--text-muted");
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: "nearest", intersect: false },
+    plugins: { legend: { display: false }, tooltip: tooltipStyle() },
+    scales: {
+      x: { grid: { display: false }, border: { color: grid }, ticks: { color: muted, maxRotation: 0, autoSkipPadding: 14 } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, maxTicksLimit: 5 } },
+    },
+    ...extra,
+  };
+}
+function merge(a, b) { // shallow-deep merge for chart options
+  const out = { ...a };
+  for (const k in b) out[k] = b[k] && typeof b[k] === "object" && !Array.isArray(b[k]) && a[k] && typeof a[k] === "object" ? merge(a[k], b[k]) : b[k];
+  return out;
+}
+const timeTicks = span => v => fmtDate(new Date(v), span > 400 * DAY ? { month: "short", year: "2-digit" } : { month: "short", day: "numeric" });
+function timeX(pts) { const span = pts.length ? pts.at(-1).x - pts[0].x : 0; return { type: "linear", ticks: { callback: timeTicks(span) } }; }
+function draw(id, config) { charts[id]?.destroy(); charts[id] = new Chart($(id), config); return charts[id]; }
+function rolling(pts, n) { return pts.map((p, i) => ({ x: p.x, y: mean(pts.slice(Math.max(0, i - n + 1), i + 1).map(q => q.y)) })); }
+
+/* Shared hover crosshair + band for groups of synced lane charts */
+const HOVER = {};   // group -> { x, band: [x0, x1] }
+Chart.register({
+  id: "crosshair",
+  afterDatasetsDraw(chart) {
+    const g = chart.config.options?.plugins?.crosshair?.group; if (!g || !HOVER[g]) return;
+    const { ctx, chartArea: a, scales: { x } } = chart, h = HOVER[g];
+    ctx.save();
+    if (h.band) {
+      const x0 = Math.max(a.left, x.getPixelForValue(h.band[0])), x1 = Math.min(a.right, x.getPixelForValue(h.band[1]));
+      ctx.fillStyle = css("--band"); ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+    }
+    if (h.x != null) {
+      const px = x.getPixelForValue(h.x);
+      if (px >= a.left && px <= a.right) { ctx.strokeStyle = css("--text-muted"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); }
+    }
+    ctx.restore();
+  },
+});
+/* Horizontal reference lines / bands */
+Chart.register({
+  id: "refs",
+  beforeDatasetsDraw(chart) {
+    const refs = chart.config.options?.plugins?.refs; if (!refs) return;
+    const { ctx, chartArea: a, scales: { y } } = chart;
+    ctx.save();
+    for (const r of refs) {
+      if (r.band) { const y0 = y.getPixelForValue(r.band[1]), y1 = y.getPixelForValue(r.band[0]);
+        ctx.fillStyle = css("--band"); ctx.fillRect(a.left, Math.max(a.top, y0), a.right - a.left, Math.min(a.bottom, y1) - Math.max(a.top, y0)); }
+      if (r.y != null) { const py = y.getPixelForValue(r.y); if (py < a.top || py > a.bottom) continue;
+        ctx.strokeStyle = css("--text-muted"); ctx.setLineDash([4, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.left, py); ctx.lineTo(a.right, py); ctx.stroke(); ctx.setLineDash([]);
+        if (r.label) { ctx.fillStyle = css("--text-muted"); ctx.font = "11px system-ui"; ctx.fillText(r.label, a.left + 4, py - 4); } }
+    }
+    ctx.restore();
+  },
+});
+const groups = {}; // group -> [chart ids]
+function setHover(group, x, band) {
+  HOVER[group] = { x, band };
+  (groups[group] || []).forEach(id => charts[id]?.draw());
+}
+function laneHover(group, onMove) {
+  return (evt, _els, chart) => {
+    if (evt.type === "mouseout") { setHover(group, null); onMove(null); return; }
+    const x = chart.scales.x.getValueForPixel(evt.x);
+    onMove(x);
+  };
+}
+
+/* =====================================================================
+   Maps
+   ===================================================================== */
+const MAPS = {};
+function getMap(id) {
+  if (!window.L) { $(id).innerHTML = `<div class="empty">Map library unavailable offline</div>`; return null; }
+  if (!MAPS[id]) {
+    const m = L.map(id, { scrollWheelZoom: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(m);
+    MAPS[id] = { map: m, layers: L.layerGroup().addTo(m) };
+  }
+  $(id).classList.toggle("dark", isDark());
+  setTimeout(() => MAPS[id].map.invalidateSize(), 0);
+  MAPS[id].layers.clearLayers();
+  return MAPS[id];
+}
+const RAMP = ["#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", "#0d366b"];
+
+/* =====================================================================
+   Tabs, routing, range
+   ===================================================================== */
+function setTab(tab, opts = {}) {
+  S.tab = tab;
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
+  ["overview", "insights", "run", "compare"].forEach(t => $(`tab-${t}`).hidden = t !== tab);
+  $("range").style.visibility = tab === "overview" || tab === "insights" ? "visible" : "hidden";
+  if (!opts.noHash) {
+    const h = tab === "run" && S.runId ? `#run=${S.runId}` : tab === "compare" && S.compare.length ? `#compare=${S.compare.join(",")}` : `#${tab}`;
+    if (location.hash !== h) history.replaceState(null, "", h);
+  }
+  renderTab();
+  updateChatContext();
+  window.scrollTo({ top: 0 });
+}
+function renderTab() {
+  if (S.tab === "overview") renderOverview();
+  else if (S.tab === "insights") renderInsights();
+  else if (S.tab === "run") renderRun();
+  else if (S.tab === "compare") renderCompare();
+  renderCompareBar();
+}
+$("tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); });
+$("range").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  [...$("range").children].forEach(x => x.setAttribute("aria-pressed", x === b));
+  S.rangeDays = +b.dataset.days; renderTab(); updateChatContext();
+});
+function openRun(id) { S.runId = id; setTab("run"); }
+function toggleCompare(id, on) {
+  const has = S.compare.includes(id);
+  if (on === undefined) on = !has;
+  if (on && !has) { if (S.compare.length >= 4) return false; S.compare.push(id); }
+  if (!on && has) S.compare = S.compare.filter(x => x !== id);
+  renderCompareBar(); updateChatContext();
+  return true;
+}
+function renderCompareBar() {
+  const n = S.compare.length;
+  $("compareBar").hidden = !n || S.tab === "compare";
+  $("compareBarText").textContent = `${n} run${n > 1 ? "s" : ""} selected for comparison${n >= 4 ? " (max 4)" : ""}`;
+  $("compareBarGo").disabled = n < 2;
+}
+$("compareBarGo").onclick = () => setTab("compare");
+$("compareBarClear").onclick = () => { S.compare = []; renderTab(); updateChatContext(); };
+
+/* =====================================================================
+   OVERVIEW
+   ===================================================================== */
+function renderOverview() {
+  const runs = inRange();
+  renderKpis(runs); renderWeekly(runs); renderPbs(runs); renderPace(runs); renderZones(runs);
+  renderTrend("vo2", "vo2", "mL/kg·min", false); renderTrend("rhr", "rhr", "bpm", true);
+  renderForm(runs); renderOverviewMap(runs); renderTable(runs);
+}
+function renderKpis(runs) {
+  const miles = runs.reduce((s, r) => s + (r.dist || 0), 0);
+  const secs = runs.reduce((s, r) => s + r.dur, 0);
+  const paced = runs.filter(r => r.dist >= 1);
+  const avgPace = paced.reduce((s, r) => s + r.dur, 0) / paced.reduce((s, r) => s + r.dist, 0);
+  const weekStart = startOfWeek(new Date());
+  const thisWeek = RUNS.filter(r => r.date >= weekStart).reduce((s, r) => s + (r.dist || 0), 0);
+  const vo2 = DATA.trends.vo2?.at(-1);
+  const weeks = S.rangeDays ? S.rangeDays / 7 : (Date.now() - RUNS[0].date) / (7 * DAY);
+  const tiles = [
+    ["Distance", miles.toFixed(0), "mi", `${runs.length} runs · ${fmtDurShort(secs)}`],
+    ["Avg pace", fmtPace(avgPace), "/mi", "runs ≥ 1 mi"],
+    ["Per week", (miles / weeks).toFixed(1), "mi", "average over range"],
+    ["This week", thisWeek.toFixed(1), "mi", `since ${fmtDate(weekStart, { month: "short", day: "numeric" })}`],
+    ["VO₂ max", vo2 ? vo2[1].toFixed(1) : "–", "", vo2 ? `as of ${fmtDate(new Date(vo2[0] + "T12:00"), { month: "short", day: "numeric" })}` : ""],
+  ];
+  $("kpis").innerHTML = tiles.map(([l, v, u, n]) =>
+    `<div class="card kpi"><div class="label">${l}</div><div class="value">${v}<small>${u}</small></div><div class="note">${n}</div></div>`).join("");
+}
+function renderWeekly(runs) {
+  const first = startOfWeek(S.rangeDays ? new Date(Date.now() - S.rangeDays * DAY) : RUNS[0].date);
+  const weeks = [];
+  for (let w = new Date(first); w <= new Date(); w.setDate(w.getDate() + 7)) weeks.push({ start: new Date(w), mi: 0, n: 0 });
+  runs.forEach(r => { const i = Math.round((startOfWeek(r.date) - first) / (7 * DAY)); if (weeks[i]) { weeks[i].mi += r.dist || 0; weeks[i].n++; } });
+  draw("weekly", {
+    type: "bar",
+    data: { labels: weeks.map(w => fmtDate(w.start, { month: "short", day: "numeric", ...(weeks.length > 60 ? { year: "2-digit" } : {}) })),
+      datasets: [{ data: weeks.map(w => +w.mi.toFixed(1)), backgroundColor: slot(1), borderRadius: 4, borderSkipped: "start",
+        maxBarThickness: 28, categoryPercentage: 0.9, barPercentage: 0.9 }] },
+    options: merge(baseOpts(), { interaction: { mode: "index", intersect: false },
+      plugins: { tooltip: { callbacks: { title: i => `Week of ${i[0].label}`, label: i => `${i.raw} mi · ${weeks[i.dataIndex].n} runs` } } } }),
+  });
+}
+function bestEffort(runs, key) {
+  return runs.reduce((b, r) => r.best?.[key] && (!b || r.best[key] < b.best[key]) ? r : b, null);
+}
+function renderPbs(runs) {
+  const row = (label, val, r) => `<dt>${label}</dt><dd>${r ? `<button class="ask-link" data-open="${r.id}">${val}</button>` : val}<span>${r ? fmtDate(r.date) : ""}</span></dd>`;
+  const be = (label, key) => { const r = bestEffort(runs, key); return row(label, r ? fmtDur(r.best[key]) : "–", r); };
+  const longest = runs.reduce((b, r) => (!b || r.dist > b.dist ? r : b), null);
+  const climb = runs.reduce((b, r) => r.elevFt && (!b || r.elevFt > b.elevFt) ? r : b, null);
+  $("pbs").innerHTML = runs.length ? [be("Mile", "1mi"), be("5K", "5k"), be("10K", "10k"), be("Half marathon", "half"),
+    row("Longest run", longest ? `${longest.dist.toFixed(2)} mi` : "–", longest),
+    row("Most climbing", climb ? `${climb.elevFt} ft` : "–", climb)].join("") : `<div class="empty">No runs in range</div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (b) openRun(b.dataset.open); });
+
+function renderHeat() {
+  const byDay = {};
+  RUNS.forEach(r => { const k = r.date.toDateString(); byDay[k] = (byDay[k] || 0) + (r.dist || 0); });
+  const end = new Date(); end.setHours(0, 0, 0, 0);
+  const start = startOfWeek(new Date(end.getTime() - 364 * DAY));
+  const lvl = mi => !mi ? 0 : mi < 3 ? 1 : mi < 5 ? 2 : mi < 8 ? 3 : 4;
+  let html = "";
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const mi = byDay[d.toDateString()] || 0;
+    html += `<i data-l="${lvl(mi)}" data-tip="${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })} · ${mi ? mi.toFixed(1) + " mi" : "rest"}"></i>`;
+  }
+  $("heat").innerHTML = html;
+  $("heatLegend").innerHTML = ["Rest", "< 3 mi", "3–5", "5–8", "8+"].map((l, i) =>
+    `<span><span class="sw" style="background:var(--heat-${i})"></span>${l}</span>`).join("");
+}
+function renderPace(runs) {
+  const pts = runs.filter(r => r.dist >= 1 && r.pace < 1200).map(r => ({ x: r.date.getTime(), y: r.pace, r }));
+  draw("pace", {
+    type: "scatter",
+    data: { datasets: [
+      { data: pts, backgroundColor: alpha(slot(1), 0.35), borderColor: css("--surface-1"), borderWidth: 1, pointRadius: 4, pointHoverRadius: 7 },
+      { type: "line", data: rolling(pts, 10), borderColor: slot(1), borderWidth: 2, pointRadius: 0, tension: 0.3 },
+    ] },
+    options: merge(baseOpts(), {
+      onClick: (e, els) => { const el = els.find(x => x.datasetIndex === 0); if (el) openRun(pts[el.index].r.id); },
+      plugins: { tooltip: { filter: i => i.datasetIndex === 0, callbacks: {
+        title: i => fmtDate(new Date(i[0].raw.x)),
+        label: i => `${fmtPace(i.raw.y)} /mi · ${i.raw.r.dist.toFixed(2)} mi${i.raw.r.hr ? " · " + Math.round(i.raw.r.hr) + " bpm" : ""}` } } },
+      scales: { x: timeX(pts), y: { reverse: true, ticks: { stepSize: 60, maxTicksLimit: 8, callback: fmtPace } } },
+    }),
+  });
+}
+function renderZones(runs) {
+  const months = {};
+  runs.filter(r => r.zones?.length === 5).forEach(r => { const k = monthKey(r.date); months[k] ??= [0, 0, 0, 0, 0]; r.zones.forEach((s, i) => months[k][i] += s); });
+  const keys = Object.keys(months).sort();
+  const pctz = keys.map(k => { const t = months[k].reduce((a, b) => a + b, 0) || 1; return months[k].map(s => s / t * 100); });
+  draw("zones", {
+    type: "bar",
+    data: { labels: keys.map(monthLabel), datasets: ZONES.map((z, i) => ({ label: z, data: pctz.map(p => +p[i].toFixed(1)), backgroundColor: css(`--z${i + 1}`),
+      borderColor: css("--surface-1"), borderWidth: { top: 1 }, borderSkipped: false, maxBarThickness: 28 })) },
+    options: merge(baseOpts(), { interaction: { mode: "index", intersect: false },
+      plugins: { tooltip: { displayColors: true, callbacks: { label: i => `${i.dataset.label}: ${i.raw}%` } } },
+      scales: { x: { stacked: true }, y: { stacked: true, max: 100, ticks: { callback: v => v + "%" } } } }),
+  });
+  $("zoneLegend").innerHTML = ZONES.map((z, i) => `<span><span class="sw" style="background:var(--z${i + 1})"></span>${z}</span>`).join("");
+}
+function renderTrend(id, key, unit, smooth) {
+  let pts = trendInRange(key);
+  if (smooth) pts = pts.map((p, i) => ({ x: p.x, y: +mean(pts.slice(Math.max(0, i - 6), i + 1).map(q => q.y)).toFixed(1), raw: p.y }));
+  draw(id, {
+    type: "line",
+    data: { datasets: [{ data: pts, borderColor: slot(1), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.25,
+      pointHoverBackgroundColor: slot(1), pointHoverBorderColor: css("--surface-1"), pointHoverBorderWidth: 2 }] },
+    options: merge(baseOpts(), { interaction: { mode: "index", intersect: false },
+      plugins: { tooltip: { callbacks: { title: i => fmtDate(new Date(i[0].raw.x)),
+        label: i => smooth ? `${i.raw.y} ${unit} (7-day avg) · ${i.raw.raw} that day` : `${i.raw.y} ${unit}` } } },
+      scales: { x: timeX(pts) } }),
+  });
+}
+const FORM = [
+  { key: "cadence", label: "Cadence", unit: "spm", fmt: v => v.toFixed(0) },
+  { key: "stride", label: "Stride length", unit: "m", fmt: v => v.toFixed(2) },
+  { key: "gct", label: "Ground contact", unit: "ms", fmt: v => v.toFixed(0) },
+  { key: "vo", label: "Vertical oscillation", unit: "cm", fmt: v => v.toFixed(1) },
+  { key: "power", label: "Power", unit: "W", fmt: v => v.toFixed(0) },
+  { key: "hr", label: "Avg heart rate", unit: "bpm", fmt: v => v.toFixed(0) },
+];
+function renderForm(runs) {
+  $("form").innerHTML = FORM.map(f => `<div><h3>${f.label}</h3><div class="now" id="now-${f.key}"></div><div class="chart xs"><canvas id="form-${f.key}"></canvas></div></div>`).join("");
+  FORM.forEach(f => {
+    const months = {};
+    runs.filter(r => r[f.key] && r.dist >= 1).forEach(r => (months[monthKey(r.date)] ??= []).push(r[f.key]));
+    const keys = Object.keys(months).sort();
+    const vals = keys.map(k => +f.fmt(mean(months[k])));
+    $(`now-${f.key}`).innerHTML = vals.length ? `${f.fmt(vals.at(-1))} <small>${f.unit} · ${monthLabel(keys.at(-1))}</small>` : `<small>no data</small>`;
+    draw(`form-${f.key}`, {
+      type: "line",
+      data: { labels: keys.map(monthLabel), datasets: [{ data: vals, borderColor: slot(1), borderWidth: 2, tension: 0.25,
+        pointRadius: vals.length < 15 ? 3 : 0, pointBackgroundColor: slot(1), pointHoverRadius: 5 }] },
+      options: merge(baseOpts(), { interaction: { mode: "index", intersect: false },
+        plugins: { tooltip: { callbacks: { label: i => `${i.raw} ${f.unit} · ${months[keys[i.dataIndex]].length} runs` } } },
+        scales: { x: { ticks: { maxTicksLimit: 4 } }, y: { ticks: { maxTicksLimit: 4 } } } }),
+    });
+  });
+}
+function frameDense(map, pts) {
+  if (!pts.length) return map.setView([20, 0], 2);
+  const c = [median(pts.map(p => p[0])), median(pts.map(p => p[1]))];
+  const near = pts.filter(p => Math.abs(p[0] - c[0]) < 0.06 && Math.abs(p[1] - c[1]) < 0.06);
+  map.fitBounds(L.latLngBounds(near.length ? near : pts), { padding: [20, 20] });
+}
+function renderOverviewMap(runs) {
+  const m = getMap("ovMap"); if (!m) return;
+  const withRoute = runs.filter(r => r.route);
+  withRoute.forEach(r => L.polyline(r.route, { color: slot(1), weight: 2, opacity: 0.35 })
+    .bindTooltip(runLabel(r), { sticky: true }).on("click", () => openRun(r.id)).addTo(m.layers));
+  frameDense(m.map, withRoute.flatMap(r => r.route));
+  $("mapHint").textContent = `${withRoute.length} routes in range. Click a route to open that run.`;
+}
+const COLS = [
+  { key: "cmp", label: "", fmt: r => `<input type="checkbox" class="cmp-check" data-cmp="${r.id}" ${S.compare.includes(r.id) ? "checked" : ""} title="Compare">`, nosort: true },
+  { key: "date", label: "Date", fmt: r => fmtDate(r.date), l: true },
+  { key: "dist", label: "Miles", fmt: r => r.dist?.toFixed(2) ?? "–" },
+  { key: "dur", label: "Time", fmt: r => fmtDur(r.dur) },
+  { key: "pace", label: "Pace", fmt: r => fmtPace(r.pace) },
+  { key: "gap", label: "GAP", fmt: r => fmtPace(r.gap) },
+  { key: "hr", label: "Avg HR", fmt: r => r.hr ? Math.round(r.hr) : "–" },
+  { key: "ef", label: "Efficiency", fmt: r => r.ef?.toFixed(2) ?? "–" },
+  { key: "decoupling", label: "Drift %", fmt: r => r.decoupling != null ? r.decoupling.toFixed(1) : "–" },
+  { key: "cadence", label: "Cadence", fmt: r => r.cadence ?? "–" },
+  { key: "power", label: "Power", fmt: r => r.power ? Math.round(r.power) : "–" },
+  { key: "elevFt", label: "Climb ft", fmt: r => r.elevFt ?? "–" },
+  { key: "tempF", label: "°F", fmt: r => r.tempF != null ? Math.round(r.tempF) : "–" },
+];
+function renderTable(runs) {
+  const rows = [...runs].sort((a, b) => { const x = a[S.sort.key] ?? -Infinity, y = b[S.sort.key] ?? -Infinity; return (x > y ? 1 : x < y ? -1 : 0) * S.sort.dir; });
+  $("table").innerHTML = `<thead><tr>${COLS.map(c => `<th class="${c.nosort ? "" : "sortable"} ${c.l ? "l" : ""}" data-k="${c.key}" ${S.sort.key === c.key ? `aria-sort="${S.sort.dir > 0 ? "ascending" : "descending"}"` : ""}>${c.label}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r => `<tr class="click" data-id="${r.id}">${COLS.map(c => `<td class="${c.l ? "l" : ""}">${c.fmt(r)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+}
+$("table").addEventListener("click", e => {
+  const cb = e.target.closest("[data-cmp]");
+  if (cb) { if (!toggleCompare(cb.dataset.cmp, cb.checked)) { cb.checked = false; } return; }
+  const th = e.target.closest("th.sortable");
+  if (th) { const k = th.dataset.k; S.sort = { key: k, dir: S.sort.key === k ? -S.sort.dir : -1 }; return renderTable(inRange()); }
+  const tr = e.target.closest("tr[data-id]");
+  if (tr) openRun(tr.dataset.id);
+});
+
+/* =====================================================================
+   INSIGHTS
+   ===================================================================== */
+function dailyLoad() {
+  // Zone-weighted TRIMP; estimate for runs without zones (e.g. Strava imports).
+  const first = new Date(RUNS[0].date); first.setHours(0, 0, 0, 0);
+  const days = Math.ceil((Date.now() - first) / DAY) + 1;
+  const load = new Array(days).fill(0), miles = new Array(days).fill(0);
+  RUNS.forEach(r => { const i = Math.floor((r.date - first) / DAY); load[i] += r.trimp ?? r.dur / 60 * 2.3; miles[i] += r.dist || 0; });
+  let ctl = 0, atl = 0;
+  const out = [];
+  for (let i = 0; i < days; i++) {
+    ctl += (load[i] - ctl) / 42; atl += (load[i] - atl) / 7;
+    const a7 = miles.slice(Math.max(0, i - 6), i + 1).reduce((s, v) => s + v, 0);
+    const c28 = miles.slice(Math.max(0, i - 27), i + 1).reduce((s, v) => s + v, 0) / 4;
+    out.push({ x: first.getTime() + i * DAY + DAY / 2, ctl, atl, tsb: ctl - atl, acwr: i >= 27 && c28 > 0 ? a7 / c28 : null, a7, c28 });
+  }
+  return out;
+}
+function riegel(t1, d1, d2) { return t1 * Math.pow(d2 / d1, 1.06); }
+function computeInsights(daily) {
+  const out = [], now = Date.now();
+  const last = (days, f = () => true) => RUNS.filter(r => r.date > now - days * DAY && f(r));
+  const between = (a, b, f = () => true) => RUNS.filter(r => r.date > now - a * DAY && r.date <= now - b * DAY && f(r));
+  const today = daily.at(-1);
+
+  // Load ramp
+  if (today.c28 > 0) {
+    const r = today.a7 / today.c28;
+    out.push({ tag: "Training load", title: r > 1.3 ? "Mileage is ramping fast" : r < 0.8 ? "Lighter than usual week" : "Mileage ramp is steady",
+      text: `Last 7 days: ${today.a7.toFixed(1)} mi vs a ${today.c28.toFixed(1)} mi weekly average over 4 weeks (ratio ${r.toFixed(2)}). ${r > 1.5 ? "Ratios above 1.5 are linked to higher injury risk." : r > 1.3 ? "Consider holding this volume before adding more." : ""}`,
+      ask: `My 7-day mileage is ${today.a7.toFixed(1)} vs 28-day weekly average ${today.c28.toFixed(1)}. Is my training load ramp safe, and how should I plan the next 2 weeks?` });
+  }
+  // Fitness & form
+  const back = daily[Math.max(0, daily.length - 43)];
+  out.push({ tag: "Fitness", title: today.ctl > back.ctl * 1.05 ? "Fitness is building" : today.ctl < back.ctl * 0.95 ? "Fitness is slipping" : "Fitness is holding",
+    text: `Fitness score ${today.ctl.toFixed(0)} (was ${back.ctl.toFixed(0)} six weeks ago). Form is ${today.tsb.toFixed(0)}: ${today.tsb < -20 ? "carrying heavy fatigue" : today.tsb < -5 ? "productive training fatigue" : today.tsb > 5 ? "fresh, a good time for a hard effort or race" : "balanced"}.`,
+    ask: "Explain my fitness, fatigue and form trend over the last 3 months and what it means for my training." });
+  // Aerobic efficiency
+  const efOk = r => r.ef && r.dist >= 2 && !r.indoor;
+  const efNow = mean(last(30, efOk).map(r => r.ef)), efThen = mean(between(120, 30, efOk).map(r => r.ef));
+  if (efNow && efThen) {
+    const d = pct(efNow, efThen);
+    out.push({ tag: "Aerobic engine", title: d > 2 ? "Aerobic efficiency is improving" : d < -2 ? "Aerobic efficiency dipped" : "Aerobic efficiency is flat",
+      text: `You cover ${signed(d, 1)}% ${d >= 0 ? "more" : "less"} distance per heartbeat in the last 30 days than in the 3 months before (${efNow.toFixed(2)} vs ${efThen.toFixed(2)}). Heat and hills can lower it temporarily.`,
+      ask: "Analyze my aerobic efficiency (speed per heartbeat) trend. What's driving it, and is heat a factor?" });
+  }
+  // Zone 2 pace
+  const z2Now = median(last(30, r => r.z2pace).map(r => r.z2pace)), z2Then = median(between(120, 30, r => r.z2pace).map(r => r.z2pace));
+  if (z2Now && z2Then) {
+    const d = z2Then - z2Now;
+    out.push({ tag: "Easy pace", title: d > 5 ? "Your easy pace got faster" : d < -5 ? "Your easy pace slowed" : "Easy pace is stable",
+      text: `Median zone-2 pace is ${fmtPace(z2Now)}/mi in the last 30 days vs ${fmtPace(z2Then)}/mi before (${d >= 0 ? Math.round(d) + "s faster" : Math.round(-d) + "s slower"}).`,
+      ask: "How has my zone 2 pace changed over time, and what does it say about my aerobic base?" });
+  }
+  // VO2 max
+  const vo2 = DATA.trends.vo2 || [];
+  if (vo2.length > 5) {
+    const nowV = vo2.at(-1)[1], old = vo2.find(([d]) => new Date(d) > now - 90 * DAY) || vo2[0];
+    out.push({ tag: "VO₂ max", title: `VO₂ max ${nowV > old[1] + 0.3 ? "is rising" : nowV < old[1] - 0.3 ? "is falling" : "is steady"}`,
+      text: `${nowV.toFixed(1)} now vs ${old[1].toFixed(1)} on ${fmtDate(new Date(old[0] + "T12:00"), { month: "short", day: "numeric" })}. Apple's estimate responds to outdoor runs with steady heart rate.`,
+      ask: "What's my VO2 max trend and what kind of training would raise it?" });
+  }
+  // Resting HR
+  const rhr = DATA.trends.rhr || [];
+  if (rhr.length > 30) {
+    const wk = mean(rhr.slice(-7).map(x => x[1])), base = mean(rhr.slice(-67, -7).map(x => x[1]));
+    if (wk && base) out.push({ tag: "Recovery", title: wk > base + 3 ? "Resting heart rate is elevated" : wk < base - 2 ? "Resting heart rate is trending down" : "Resting heart rate is normal",
+      text: `7-day average ${wk.toFixed(0)} bpm vs your 60-day baseline ${base.toFixed(0)} bpm. ${wk > base + 3 ? "An elevated RHR can signal fatigue, illness, or poor sleep." : ""}`,
+      ask: "Look at my resting heart rate and HRV recently. Am I recovering well from training?" });
+  }
+  // Drift on recent long runs
+  const drifty = last(45, r => r.decoupling != null && r.dur >= 2700);
+  if (drifty.length) {
+    const bad = drifty.filter(r => r.decoupling > 5);
+    out.push({ tag: "Endurance", title: bad.length ? `Cardiac drift on ${bad.length} of ${drifty.length} longer runs` : "Heart rate held steady on long runs",
+      text: bad.length ? `Most recent: ${fmtDate(bad.at(-1).date)} drifted ${bad.at(-1).decoupling}%. Over 5% usually means the pace was above your aerobic threshold or heat/hydration played a role.`
+        : `All ${drifty.length} runs over 45 min in the last 6 weeks stayed under 5% decoupling.`,
+      ask: "Look at aerobic decoupling on my long runs. Which runs drifted and why?" });
+  }
+  // Heat effect
+  const hot = RUNS.filter(r => !r.indoor && r.tempF >= 80 && r.hr && r.pace && r.dist >= 2), cool = RUNS.filter(r => !r.indoor && r.tempF != null && r.tempF < 65 && r.hr && r.pace && r.dist >= 2);
+  if (hot.length >= 5 && cool.length >= 5) {
+    const dp = mean(hot.map(r => r.pace)) - mean(cool.map(r => r.pace)), dh = mean(hot.map(r => r.hr)) - mean(cool.map(r => r.hr));
+    out.push({ tag: "Weather", title: "Heat costs you pace", text: `On runs at 80°F+ you average ${Math.round(dp)}s/mi slower and ${dh.toFixed(0)} bpm ${dh >= 0 ? "higher" : "lower"} than below 65°F (${hot.length} hot vs ${cool.length} cool runs).`,
+      ask: "Quantify how temperature and humidity affect my pace and heart rate." });
+  }
+  // Recent PB
+  for (const [k, name] of [["5k", "5K"], ["10k", "10K"], ["1mi", "mile"]]) {
+    const best = bestEffort(RUNS, k);
+    if (best && best.date > now - 30 * DAY) {
+      out.push({ tag: "Personal best", title: `New ${name} best effort`, text: `${fmtDur(best.best[k])} on ${fmtDate(best.date)}, within a ${best.dist.toFixed(1)} mi run.`, open: best.id,
+        ask: `I set a new ${name} best effort on ${fmtDate(best.date)} (run ${best.id}). What made that run fast compared with my others?` });
+      break;
+    }
+  }
+  // Consistency
+  const wkCounts = [...Array(8)].map((_, i) => { const s = startOfWeek(new Date(now - i * 7 * DAY)); return RUNS.filter(r => r.date >= s && r.date < s.getTime() + 7 * DAY).length; });
+  const solid = wkCounts.filter(n => n >= 3).length;
+  out.push({ tag: "Consistency", title: `${solid} of the last 8 weeks had 3+ runs`, text: `Runs per week, most recent first: ${wkCounts.join(", ")}.`,
+    ask: "How consistent has my training been, and what weekly structure would you suggest?" });
+  return out;
+}
+function renderInsights() {
+  const daily = dailyLoad();
+  const cut = S.rangeDays ? Date.now() - S.rangeDays * DAY : 0;
+  const view = daily.filter(p => p.x >= cut);
+  $("insightCards").innerHTML = computeInsights(daily).map((c, i) => `<div class="card insight"><div class="tag">${c.tag}</div><h3>${esc(c.title)}</h3><p>${esc(c.text)}</p>
+    <div class="toolbar">${c.open ? `<button class="ask" data-open="${c.open}">Open run</button>` : ""}<button class="ask" data-ask="${esc(c.ask)}">Ask Claude why →</button></div></div>`).join("");
+
+  draw("ctl", { type: "line", data: { datasets: [
+      { label: "Fitness", data: view.map(p => ({ x: p.x, y: +p.ctl.toFixed(1) })), borderColor: slot(1), borderWidth: 2, pointRadius: 0, tension: 0.2 },
+      { label: "Fatigue", data: view.map(p => ({ x: p.x, y: +p.atl.toFixed(1) })), borderColor: slot(2), borderWidth: 2, pointRadius: 0, tension: 0.2 }] },
+    options: merge(baseOpts(), { interaction: { mode: "index", intersect: false },
+      plugins: { tooltip: { displayColors: true, callbacks: { title: i => fmtDate(new Date(i[0].raw.x)), label: i => `${i.dataset.label}: ${i.raw.y}` } } }, scales: { x: timeX(view) } }) });
+  draw("tsb", { type: "bar", data: { datasets: [{ data: view.map(p => ({ x: p.x, y: +p.tsb.toFixed(1) })), backgroundColor: slot(1), barPercentage: 1, categoryPercentage: 1 }] },
+    options: merge(baseOpts(), { interaction: { mode: "index", intersect: false }, plugins: { refs: [{ y: 0 }, { y: -20, label: "heavy fatigue" }],
+      tooltip: { callbacks: { title: i => fmtDate(new Date(i[0].raw.x)), label: i => `Form ${i.raw.y}` } } }, scales: { x: timeX(view) } }) });
+  const acwr = view.filter(p => p.acwr != null);
+  draw("acwr", { type: "line", data: { datasets: [{ data: acwr.map(p => ({ x: p.x, y: +p.acwr.toFixed(2), a7: p.a7, c28: p.c28 })), borderColor: slot(1), borderWidth: 2, pointRadius: 0, tension: 0.2 }] },
+    options: merge(baseOpts(), { interaction: { mode: "index", intersect: false }, plugins: { refs: [{ band: [0.8, 1.3] }, { y: 1.5, label: "1.5" }],
+      tooltip: { callbacks: { title: i => fmtDate(new Date(i[0].raw.x)), label: i => `Ratio ${i.raw.y} · ${i.raw.a7.toFixed(1)} mi vs ${i.raw.c28.toFixed(1)} mi/wk` } } },
+      scales: { x: timeX(acwr), y: { suggestedMin: 0, suggestedMax: 1.8 } } }) });
+
+  const runs = inRange();
+  const scatterTrend = (id, pts, fmt, reverse, refs) => draw(id, { type: "scatter", data: { datasets: [
+      { data: pts, backgroundColor: alpha(slot(1), 0.35), borderColor: css("--surface-1"), borderWidth: 1, pointRadius: 4, pointHoverRadius: 7 },
+      { type: "line", data: rolling(pts, 8), borderColor: slot(1), borderWidth: 2, pointRadius: 0, tension: 0.3 }] },
+    options: merge(baseOpts(), { onClick: (e, els) => { const el = els.find(x => x.datasetIndex === 0); if (el) openRun(pts[el.index].r.id); },
+      plugins: { refs, tooltip: { filter: i => i.datasetIndex === 0, callbacks: { title: i => fmtDate(new Date(i[0].raw.x)), label: i => `${fmt(i.raw.y)} · ${i.raw.r.dist.toFixed(1)} mi${i.raw.r.tempF != null ? " · " + Math.round(i.raw.r.tempF) + "°F" : ""}` } } },
+      scales: { x: timeX(pts), y: { reverse, ticks: { callback: fmt } } } }) });
+  scatterTrend("ef", runs.filter(r => r.ef && r.dist >= 2 && !r.indoor).map(r => ({ x: r.date.getTime(), y: r.ef, r })), v => v.toFixed(2), false);
+  scatterTrend("z2", runs.filter(r => r.z2pace).map(r => ({ x: r.date.getTime(), y: r.z2pace, r })), fmtPace, true);
+  scatterTrend("decouple", runs.filter(r => r.decoupling != null && Math.abs(r.decoupling) < 30).map(r => ({ x: r.date.getTime(), y: r.decoupling, r })), v => v.toFixed(1) + "%", false, [{ y: 5, label: "5%" }]);
+  renderBestEfforts(runs);
+
+  const out = runs.filter(r => !r.indoor && r.tempF != null && r.dist >= 2 && r.pace < 1200 && (!r.hr || r.hr > 100));
+  const heatScatter = (id, key, fmt, reverse) => { const pts = out.filter(r => r[key]).map(r => ({ x: r.tempF, y: r[key], r }));
+    draw(id, { type: "scatter", data: { datasets: [{ data: pts, backgroundColor: alpha(slot(1), 0.4), borderColor: css("--surface-1"), borderWidth: 1, pointRadius: 4, pointHoverRadius: 7 }] },
+      options: merge(baseOpts(), { onClick: (e, els) => els[0] && openRun(pts[els[0].index].r.id),
+        plugins: { tooltip: { callbacks: { title: i => fmtDate(i[0].raw.r.date), label: i => `${Math.round(i.raw.x)}°F${i.raw.r.humid != null ? ", " + i.raw.r.humid + "% RH" : ""} · ${fmt(i.raw.y)}` } } },
+        scales: { x: { type: "linear", ticks: { callback: v => v + "°" } }, y: { reverse, ticks: { callback: fmt } } } }) }); };
+  heatScatter("heatPace", "pace", fmtPace, true);
+  heatScatter("heatHr", "hr", v => Math.round(v) + " bpm", false);
+
+  // Race predictor (last 90 days)
+  const recent = RUNS.filter(r => r.date > Date.now() - 90 * DAY);
+  const srcs = [["1mi", 1], ["5k", 3.10686], ["10k", 6.21371], ["half", 13.1094]].map(([k, d]) => { const r = bestEffort(recent, k); return r ? { k, d, t: r.best[k], r } : null; }).filter(Boolean);
+  const targets = [["5K", 3.10686], ["10K", 6.21371], ["Half", 13.1094], ["Marathon", 26.2188]];
+  $("predict").innerHTML = srcs.length ? `<thead><tr><th class="l">Race</th><th>Predicted</th><th>Pace</th><th class="l">Based on</th></tr></thead><tbody>${targets.map(([name, d]) => {
+    const src = [...srcs].filter(s => s.d <= d * 1.01).pop() || srcs[0];
+    const t = riegel(src.t, src.d, d);
+    return `<tr><td class="l">${name}</td><td><b>${fmtDur(t)}</b></td><td>${fmtPace(t / d)}</td><td class="l"><button class="ask-link" data-open="${src.r.id}">${src.k} ${fmtDur(src.t)}</button></td></tr>`;
+  }).join("")}</tbody>` : `<tbody><tr><td class="empty">No best efforts in the last 90 days</td></tr></tbody>`;
+
+  // Weekday x hour
+  const H0 = 5, H1 = 22, grid = [...Array(7)].map(() => new Array(H1 - H0 + 1).fill(0));
+  runs.forEach(r => { const h = Math.min(H1, Math.max(H0, r.date.getHours())); grid[(r.date.getDay() + 6) % 7][h - H0]++; });
+  const maxC = Math.max(1, ...grid.flat());
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  let html = `<span></span>` + [...Array(H1 - H0 + 1)].map((_, i) => `<span style="text-align:center">${(H0 + i) % 3 === 0 ? ((H0 + i) % 12 || 12) + ((H0 + i) < 12 ? "a" : "p") : ""}</span>`).join("");
+  grid.forEach((row, d) => { html += `<span>${days[d]}</span>` + row.map((c, h) => `<i data-l="${c ? Math.ceil(c / maxC * 4) : 0}" data-tip="${days[d]} ${(H0 + h) % 12 || 12}${H0 + h < 12 ? "am" : "pm"} · ${c} run${c === 1 ? "" : "s"}"></i>`).join(""); });
+  $("dow").innerHTML = html;
+}
+function renderBestEfforts(runs) {
+  const k = S.be;
+  const pts = runs.filter(r => r.best?.[k]).map(r => ({ x: r.date.getTime(), y: r.best[k], r }));
+  let best = Infinity; const prog = [];
+  RUNS.filter(r => r.best?.[k]).forEach(r => { if (r.best[k] < best) { best = r.best[k]; } if (pts.length && r.date.getTime() >= pts[0].x) prog.push({ x: r.date.getTime(), y: best }); });
+  draw("beChart", { type: "scatter", data: { datasets: [
+      { data: pts, backgroundColor: alpha(slot(1), 0.35), borderColor: css("--surface-1"), borderWidth: 1, pointRadius: 4, pointHoverRadius: 7 },
+      { type: "line", data: prog, borderColor: slot(1), borderWidth: 2, pointRadius: 0, stepped: true }] },
+    options: merge(baseOpts(), { onClick: (e, els) => { const el = els.find(x => x.datasetIndex === 0); if (el) openRun(pts[el.index].r.id); },
+      plugins: { tooltip: { filter: i => i.datasetIndex === 0, callbacks: { title: i => fmtDate(new Date(i[0].raw.x)), label: i => `${fmtDur(i.raw.y)} within ${i.raw.r.dist.toFixed(1)} mi` } } },
+      scales: { x: timeX(pts), y: { reverse: true, ticks: { callback: fmtDur } } } }) });
+}
+$("beSel").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  [...$("beSel").children].forEach(x => x.setAttribute("aria-pressed", x === b)); S.be = b.dataset.k; renderBestEfforts(inRange()); });
+
+/* =====================================================================
+   RUN DETAIL
+   ===================================================================== */
+let RUN_CTX = null; // { run, st }
+function fillRunSelect() {
+  $("runSelect").innerHTML = [...RUNS].reverse().map(r => `<option value="${r.id}">${esc(runLabel(r))}</option>`).join("");
+}
+$("runSelect").onchange = e => openRun(e.target.value);
+$("prevRun").onclick = () => { const i = RUNS.indexOf(BY_ID[S.runId]); if (i > 0) openRun(RUNS[i - 1].id); };
+$("nextRun").onclick = () => { const i = RUNS.indexOf(BY_ID[S.runId]); if (i < RUNS.length - 1) openRun(RUNS[i + 1].id); };
+$("runAddCompare").onclick = () => { if (!toggleCompare(S.runId)) alertCompareFull(); renderRunButtons(); };
+$("runSimilar").onclick = () => { const r = BY_ID[S.runId]; const sim = sameRoute(r).slice(0, 3);
+  S.compare = [r.id, ...sim.map(x => x.id)]; setTab("compare"); };
+$("runAsk").onclick = () => askClaude("Analyze this run in depth: pacing mile by mile, heart rate response, drift, form metrics, and the conditions. What went well, and what should I do differently next time?");
+function alertCompareFull() { $("runAddCompare").textContent = "Compare is full (4)"; setTimeout(renderRunButtons, 1500); }
+function renderRunButtons() {
+  const on = S.compare.includes(S.runId);
+  $("runAddCompare").textContent = on ? "✓ In compare" : "+ Compare";
+  const sim = BY_ID[S.runId] ? sameRoute(BY_ID[S.runId]) : [];
+  $("runSimilar").disabled = !sim.length;
+  $("runSimilar").textContent = sim.length ? `Compare same route (${sim.length})` : "No same-route runs";
+  $("prevRun").disabled = RUNS[0].id === S.runId; $("nextRun").disabled = RUNS.at(-1).id === S.runId;
+}
+function sameRoute(r) {
+  if (!r.route) return [];
+  if (!window.L) return [];
+  const km = (a, b) => L.latLng(a).distanceTo(L.latLng(b)) / 1000;
+  return RUNS.filter(o => o !== r && o.route && Math.abs(o.dist - r.dist) / r.dist < 0.12 && km(o.route[0], r.route[0]) < 0.3 && km(o.route.at(-1), r.route.at(-1)) < 0.3 &&
+    km(o.route[o.route.length >> 1], r.route[r.route.length >> 1]) < 0.6).sort((a, b) => b.date - a.date);
+}
+async function renderRun() {
+  if (!S.runId || !BY_ID[S.runId]) S.runId = RUNS.at(-1).id;
+  const r = BY_ID[S.runId];
+  $("runSelect").value = r.id;
+  renderRunButtons();
+  $("runTitle").textContent = fmtDate(r.date, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  $("runSub").textContent = `${r.date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} · ${r.src.replace(/ /g, " ")}${r.indoor ? " · indoor" : ""}${r.tempF != null ? ` · ${Math.round(r.tempF)}°F, ${r.humid}% humidity` : ""}`;
+  const stat = (l, v) => v ? `<div>${l}<b>${v}</b></div>` : "";
+  $("runStats").innerHTML = [stat("Distance", r.dist && `${r.dist.toFixed(2)} mi`), stat("Time", fmtDur(r.dur)), stat("Pace", r.pace && `${fmtPace(r.pace)}/mi`),
+    stat("Grade-adj. pace", r.gap && `${fmtPace(r.gap)}/mi`), stat("Avg HR", r.hr && `${Math.round(r.hr)} bpm`), stat("Max HR", r.hrMax && `${r.hrMax} bpm`),
+    stat("Cadence", r.cadence && `${r.cadence} spm`), stat("Power", r.power && `${Math.round(r.power)} W`), stat("Climb", r.elevFt && `${r.elevFt} ft`),
+    stat("Load", r.trimp && `${r.trimp}`), stat("Calories", r.kcal && `${Math.round(r.kcal)}`)].join("");
+  const chips = [];
+  if (r.splitDelta != null) chips.push(r.splitDelta < -5 ? `<b>Negative split</b> · 2nd half ${-r.splitDelta}s/mi faster` : r.splitDelta > 5 ? `<b>Positive split</b> · 2nd half ${r.splitDelta}s/mi slower` : `<b>Even split</b> · halves within 5s/mi`);
+  if (r.paceCV != null) chips.push(`<b>Pacing ${r.paceCV < 3 ? "very steady" : r.paceCV < 6 ? "steady" : "variable"}</b> · ${r.paceCV}% mile variation`);
+  if (r.decoupling != null) chips.push(`<b>${r.decoupling > 5 ? "Cardiac drift" : "HR held steady"}</b> · ${r.decoupling}% decoupling`);
+  if (r.gap && r.pace) { const d = r.pace - r.gap; if (Math.abs(d) >= 5) chips.push(`<b>Hills ${d > 0 ? "cost" : "gave"} ${Math.abs(Math.round(d))}s/mi</b> · flat-equivalent ${fmtPace(r.gap)}`); }
+  if (r.z2pace) chips.push(`<b>Zone 2 pace</b> · ${fmtPace(r.z2pace)}/mi`);
+  for (const [k, n] of [["1mi", "Mile"], ["5k", "5K"], ["10k", "10K"], ["half", "Half"]]) if (r.best?.[k]) {
+    const prior = RUNS.filter(o => o.date < r.date && o.best?.[k]).reduce((b, o) => Math.min(b, o.best[k]), Infinity);
+    chips.push(`<b>${n} ${fmtDur(r.best[k])}</b>${r.best[k] < prior ? " · best ever at the time" : ""}`);
+  }
+  $("runChips").innerHTML = chips.map(c => `<span class="chip">${c}</span>`).join("");
+  renderRunZones(r); renderVsTypical(r);
+
+  const st = await getStream(r.id);
+  if (S.runId !== r.id) return;
+  RUN_CTX = { run: r, st };
+  renderRunMetricsToggles(st);
+  renderRunLanes();
+  renderMileTable();
+  renderRunMap();
+}
+function renderRunZones(r) {
+  draw("runZones", { type: "bar", data: { labels: ZONES, datasets: [{ data: (r.zones || []).map(s => +(s / 60).toFixed(1)),
+      backgroundColor: ZONES.map((_, i) => css(`--z${i + 1}`)), borderRadius: 4, borderSkipped: "start", maxBarThickness: 48 }] },
+    options: merge(baseOpts(), { plugins: { tooltip: { callbacks: { label: i => `${i.raw} min` } } } }) });
+}
+function renderVsTypical(r) {
+  const peers = RUNS.filter(o => o !== r && o.dist && Math.abs(o.dist - r.dist) / r.dist < 0.2);
+  const rows = [["Pace", "pace", fmtPace, -1], ["Grade-adj. pace", "gap", fmtPace, -1], ["Avg HR", "hr", v => Math.round(v), -1], ["Efficiency", "ef", v => v.toFixed(2), 1],
+    ["Drift %", "decoupling", v => v.toFixed(1), -1], ["Cadence", "cadence", v => Math.round(v), 1], ["Power", "power", v => Math.round(v), 0], ["Stride (m)", "stride", v => v.toFixed(2), 1], ["Ground contact", "gct", v => Math.round(v), -1]];
+  $("runVsTypical").innerHTML = peers.length < 3 ? `<tbody><tr><td class="empty">Not enough similar runs yet</td></tr></tbody>` :
+    `<thead><tr><th class="l">Metric</th><th>This run</th><th>Typical (${peers.length})</th><th>Diff</th></tr></thead><tbody>${rows.filter(([, k]) => r[k] != null).map(([l, k, f, better]) => {
+      const m = median(peers.map(o => o[k])); if (m == null) return "";
+      const d = r[k] - m; const good = better === 0 ? null : d * better > 0;
+      const diff = k === "pace" || k === "gap" ? `${d > 0 ? "+" : "−"}${fmtPace(Math.abs(d))}` : signed(d, k === "ef" || k === "stride" ? 2 : k === "decoupling" ? 1 : 0);
+      return `<tr><td class="l">${l}</td><td>${f(r[k])}</td><td>${f(m)}</td><td>${Math.abs(d) < 1e-9 ? "–" : diff}${good == null || Math.abs(d) < 1e-9 ? "" : good ? " ▲" : " ▼"}</td></tr>`; }).join("")}</tbody>`;
+}
+function renderRunMetricsToggles(st) {
+  const avail = Object.keys(METRICS).filter(k => st?.[k]?.some(v => v != null));
+  S.runMetrics = S.runMetrics.filter(k => avail.includes(k));
+  $("runMetrics").innerHTML = avail.map(k => `<label><input type="checkbox" value="${k}" ${S.runMetrics.includes(k) ? "checked" : ""}><span class="sw" style="background:${metricColor(k)}"></span>${METRICS[k].label}</label>`).join("");
+}
+$("runMetrics").addEventListener("change", () => { S.runMetrics = [...$("runMetrics").querySelectorAll("input:checked")].map(i => i.value); renderRunLanes(); });
+$("runMode").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  [...$("runMode").children].forEach(x => x.setAttribute("aria-pressed", x === b)); S.runMode = b.dataset.m; renderRunLanes(); });
+
+function laneOpts(group, onMove, extra) {
+  return merge(baseOpts(), merge({
+    events: ["mousemove", "mouseout", "touchmove", "touchstart"],
+    onHover: laneHover(group, onMove),
+    plugins: { tooltip: { enabled: false }, crosshair: { group } },
+    interaction: { mode: "index", intersect: false },
+    elements: { point: { radius: 0, hoverRadius: 0 } },
+  }, extra));
+}
+function destroyGroup(group) { (groups[group] || []).forEach(id => { charts[id]?.destroy(); delete charts[id]; }); groups[group] = []; }
+function yRange(vals, k) {
+  const lo = pctl(vals, 0.02), hi = pctl(vals, 0.98); if (lo == null) return {};
+  const pad = (hi - lo) * 0.1 || 1;
+  return { min: k === "pace" ? Math.max(0, lo - pad) : lo - pad, max: hi + pad };
+}
+function renderRunLanes() {
+  const ctx = RUN_CTX; destroyGroup("run"); $("runLanes").innerHTML = "";
+  if (!ctx?.st) { $("runLanes").innerHTML = `<div class="empty">No detailed samples recorded for this run (imported from ${esc(ctx?.run.src || "another app")}).</div>`; $("runReadout").innerHTML = ""; return; }
+  const { st } = ctx, ks = S.runMetrics;
+  if (!ks.length) { $("runReadout").innerHTML = "Pick at least one metric above."; return; }
+  const maxD = st.d.at(-1);
+  const xMiles = { type: "linear", min: 0, max: maxD, ticks: { stepSize: maxD > 8 ? 2 : 1, callback: v => v + " mi" }, grid: { display: true, color: css("--grid") } };
+  const onMove = x => { if (x == null) return runReadout(null); const i = nearestIdx(st.d, x); setHover("run", st.d[i]); runReadout(i); };
+
+  if (S.runMode === "mile") {
+    const miles = st.miles;
+    const mk = { pace: "pace", hr: "hr", power: "power", cad: "cad", ele: "up", gct: "gct", stride: "stride", vo: "vo" };
+    const onMoveMile = x => { if (x == null) return runReadout(null); const i = Math.max(0, Math.min(miles.length - 1, Math.round(x))); setHover("run", i); mileReadout(i); highlightMile(i); };
+    ks.forEach((k, li) => {
+      const id = `runLane${li}`, m = METRICS[k];
+      $("runLanes").insertAdjacentHTML("beforeend", `<div class="lane"><div class="lane-title"><span>${m.label}${k === "ele" ? " gained" : ""}</span><span>${k === "ele" ? "ft" : m.unit}</span></div><div class="chart"><canvas id="${id}"></canvas></div></div>`);
+      const vals = miles.map(r => r[mk[k]]), yr = k === "ele" ? { beginAtZero: true } : yRange(vals, k);
+      draw(id, { type: "bar", data: { labels: miles.map(r => r.dist < 0.95 ? `${r.mile} (${r.dist})` : `${r.mile}`), datasets: [{ data: vals, backgroundColor: metricColor(k), borderRadius: 4,
+        base: k === "ele" ? 0 : m.reverse ? yr.max : yr.min, maxBarThickness: 42 }] },
+        options: laneOpts("run", onMoveMile, { scales: { x: { ticks: { callback: (v, i) => i === 0 || li === ks.length - 1 ? `Mi ${miles[i].mile}` : miles[i].mile } }, y: { reverse: !!m.reverse, ...yr, ticks: { callback: v => m.fmt(v), maxTicksLimit: 3 } } } }) });
+      groups.run.push(id);
+    });
+    mileReadout(null);
+    return;
+  }
+
+  if (S.runMode === "overlay") {
+    $("runLanes").innerHTML = `<div class="legend" id="ovLegend"></div><div class="chart overlay-chart"><canvas id="runOverlay"></canvas></div><p class="note">Each metric is scaled to its own range so shapes line up; read exact values above. Pace is flipped so up = faster.</p>`;
+    const datasets = ks.map(k => {
+      const raw = st[k], m = METRICS[k];
+      const vals = raw.map((v, i) => v == null ? null : mean(raw.slice(Math.max(0, i - 3), i + 4))); // ~1 min smoothing: overlay is about shape
+      const lo = pctl(vals, 0.02), hi = pctl(vals, 0.98);
+      const norm = v => v == null ? null : Math.max(-5, Math.min(105, (m.reverse ? hi - v : v - lo) / ((hi - lo) || 1) * 100));
+      return { label: m.label, data: st.d.map((d, i) => ({ x: d, y: norm(vals[i]) })), borderColor: metricColor(k), backgroundColor: m.elev ? alpha(css("--elev"), 0.25) : undefined,
+        fill: m.elev ? "start" : false, borderWidth: m.elev ? 1 : 2, tension: 0.3, spanGaps: true, order: m.elev ? 10 : 0 };
+    });
+    $("ovLegend").innerHTML = ks.map(k => `<span><span class="ln" style="background:${metricColor(k)}"></span>${METRICS[k].label}</span>`).join("");
+    draw("runOverlay", { type: "line", data: { datasets }, options: laneOpts("run", onMove, { scales: { x: xMiles, y: { min: -5, max: 105, ticks: { display: false }, grid: { color: css("--grid") } } } }) });
+    groups.run.push("runOverlay");
+    runReadout(null);
+    return;
+  }
+
+  ks.forEach((k, li) => {
+    const id = `runLane${li}`, m = METRICS[k];
+    $("runLanes").insertAdjacentHTML("beforeend", `<div class="lane"><div class="lane-title"><span>${m.label}</span><span>${m.unit}</span></div><div class="chart"><canvas id="${id}"></canvas></div></div>`);
+    const vals = st[k];
+    draw(id, { type: "line", data: { datasets: [{ data: st.d.map((d, i) => ({ x: d, y: vals[i] })), borderColor: metricColor(k), borderWidth: m.elev ? 1 : 1.75,
+      backgroundColor: m.elev ? alpha(css("--elev"), 0.3) : undefined, fill: m.elev ? "start" : false, tension: 0.3, spanGaps: 0.4 }] },
+      options: laneOpts("run", onMove, { scales: { x: { ...xMiles, ticks: { ...xMiles.ticks, display: li === ks.length - 1 } }, y: { reverse: !!m.reverse, ...yRange(vals, k), ticks: { callback: v => m.fmt(v), maxTicksLimit: 3 } } } }) });
+    groups.run.push(id);
+  });
+  runReadout(null);
+}
+function runReadout(i) {
+  const ctx = RUN_CTX; if (!ctx?.st) return;
+  const { st } = ctx;
+  updateRunMarker(i);
+  if (i == null) { $("runReadout").innerHTML = `<span class="typing" style="animation:none">Hover the charts to read values at any point</span>`; highlightMileRow(null); return; }
+  const mile = st.miles.findIndex(m => st.d[i] <= m.mile) ;
+  highlightMileRow(mile < 0 ? st.miles.length - 1 : mile);
+  const item = (k, label, v) => `<span><span class="k">${label}</span><b>${v}</b></span>`;
+  $("runReadout").innerHTML = item("", "Distance", st.d[i].toFixed(2) + " mi") + item("", "Time", fmtDur(st.t[i])) +
+    Object.keys(METRICS).filter(k => st[k]?.[i] != null && (S.runMetrics.includes(k) || ["pace", "hr"].includes(k)))
+      .map(k => item(k, `<span class="sw" style="background:${metricColor(k)}"></span>${METRICS[k].label}`, `${METRICS[k].fmt(st[k][i])} ${METRICS[k].unit === "/mi" ? "/mi" : METRICS[k].unit}`)).join("");
+}
+function mileReadout(i) {
+  const st = RUN_CTX?.st; if (!st) return;
+  if (i == null) { $("runReadout").innerHTML = `<span class="typing" style="animation:none">Hover a mile to read its numbers</span>`; highlightMile(null); return; }
+  const m = st.miles[i];
+  const item = (label, v) => v == null ? "" : `<span><span class="k">${label}</span><b>${v}</b></span>`;
+  $("runReadout").innerHTML = item("Mile", `${m.mile}${m.dist < 0.95 ? ` (${m.dist} mi)` : ""}`) + item("Split", fmtDur(m.time)) + item("Pace", fmtPace(m.pace) + " /mi") + item("GAP", fmtPace(m.gap) + " /mi") +
+    item("Avg HR", m.hr && `${m.hr} bpm`) + item("Climb", m.up != null ? `↑${m.up} ↓${m.down} ft` : null) + item("Power", m.power && `${m.power} W`) + item("Cadence", m.cad && `${m.cad} spm`);
+}
+function renderMileTable() {
+  const st = RUN_CTX?.st;
+  if (!st?.miles?.length) { $("mileTable").innerHTML = `<tbody><tr><td class="empty">No per-mile data</td></tr></tbody>`; return; }
+  const cols = [["pace", "Pace", fmtPace, -1], ["gap", "GAP", fmtPace, -1], ["hr", "Avg HR", v => v, null], ["hrMax", "Max HR", v => v, null], ["up", "↑ ft", v => v, null], ["down", "↓ ft", v => v, null],
+    ["power", "Power", v => v, null], ["cad", "Cadence", v => v, 1], ["gct", "GCT", v => v, -1], ["stride", "Stride", v => v.toFixed(2), 1], ["vo", "VO cm", v => v, -1]]
+    .filter(([k]) => st.miles.some(m => m[k] != null));
+  const full = st.miles.filter(m => m.dist >= 0.95);
+  const stats = Object.fromEntries(cols.map(([k]) => { const v = st.miles.map(m => m[k]).filter(x => x != null); return [k, { lo: Math.min(...v), hi: Math.max(...v) }]; }));
+  const best = Object.fromEntries(cols.filter(c => c[3]).map(([k, , , dir]) => { const v = full.map(m => m[k]).filter(x => x != null); return [k, v.length ? (dir < 0 ? Math.min(...v) : Math.max(...v)) : null]; }));
+  $("mileTable").innerHTML = `<thead><tr><th class="l">Mile</th><th>Time</th>${cols.map(c => `<th>${c[1]}</th>`).join("")}</tr></thead><tbody>${st.miles.map((m, i) => `<tr class="click" data-mile="${i}">
+    <td class="l">${m.mile}${m.dist < 0.95 ? ` <span class="sub">(${m.dist})</span>` : ""}</td><td>${fmtDur(m.time)}</td>
+    ${cols.map(([k, , f]) => { if (m[k] == null) return "<td>–</td>"; const s = stats[k]; const w = s.hi > s.lo ? (k === "pace" || k === "gap" ? (s.hi - m[k]) : (m[k] - s.lo)) / (s.hi - s.lo) : 0.5;
+      return `<td class="bar ${best[k] === m[k] && m.dist >= 0.95 ? "best" : ""}" style="--w:${(0.1 + 0.9 * w).toFixed(2)}"><span>${f(m[k])}</span></td>`; }).join("")}</tr>`).join("")}</tbody>`;
+}
+$("mileTable").addEventListener("mouseover", e => { const tr = e.target.closest("tr[data-mile]"); if (tr) { const i = +tr.dataset.mile; highlightMile(i);
+  const st = RUN_CTX.st; const m = st.miles[i]; if (S.runMode !== "mile") setHover("run", null, [m.mile - 1, m.mile - 1 + m.dist]); else setHover("run", i); } });
+$("mileTable").addEventListener("mouseleave", () => { highlightMile(null); setHover("run", null); });
+$("mileTable").addEventListener("click", e => { const tr = e.target.closest("tr[data-mile]"); if (!tr) return; const m = RUN_CTX.st.miles[+tr.dataset.mile];
+  askClaude(`In this run, what happened in mile ${m.mile} (pace ${fmtPace(m.pace)}, GAP ${fmtPace(m.gap)}, HR ${m.hr})? Explain it relative to the other miles.`); });
+function highlightMileRow(i) { document.querySelectorAll("#mileTable tr[data-mile]").forEach(tr => tr.classList.toggle("hl", +tr.dataset.mile === i)); }
+
+/* Run map: route colored by a metric, synced hover marker, mile highlight */
+let runMapState = null;
+function renderRunMap() {
+  const ctx = RUN_CTX, m = getMap("runMap"); if (!m) return;
+  runMapState = { marker: null, mileLayer: null };
+  const st = ctx?.st;
+  if (!st?.lat) { $("runMapHint").textContent = "No GPS route for this run"; $("runMapLegend").innerHTML = ""; m.map.setView([20, 0], 2); return; }
+  const k = S.mapColor, raw = st[k] || [];
+  const vals = k === "pace" ? raw.map(v => v ? 3600 / v : null) : raw; // speed so darker = faster
+  const lo = pctl(vals, 0.05), hi = pctl(vals, 0.95);
+  const pts = st.lat.map((la, i) => [la, st.lon[i]]);
+  for (let i = 1; i < pts.length; i++) {
+    const v = vals[i] ?? vals[i - 1];
+    const b = v == null || hi === lo ? 3 : Math.max(0, Math.min(6, Math.floor((v - lo) / (hi - lo) * 7)));
+    L.polyline([pts[i - 1], pts[i]], { color: RAMP[b], weight: 5, opacity: 0.95, lineCap: "round" }).addTo(m.layers);
+  }
+  L.circleMarker(pts[0], { radius: 5, color: css("--surface-1"), weight: 2, fillColor: slot(3), fillOpacity: 1 }).bindTooltip("Start").addTo(m.layers);
+  L.circleMarker(pts.at(-1), { radius: 5, color: css("--surface-1"), weight: 2, fillColor: slot(2), fillOpacity: 1 }).bindTooltip("Finish").addTo(m.layers);
+  m.map.fitBounds(L.latLngBounds(pts), { padding: [20, 20] });
+  const name = { pace: "pace", hr: "heart rate", ele: "elevation" }[k];
+  $("runMapHint").textContent = `Colored by ${name}`;
+  const ends = k === "pace" ? ["Slower", "Faster"] : k === "hr" ? [`${Math.round(lo)} bpm`, `${Math.round(hi)} bpm`] : [`${Math.round(lo)} ft`, `${Math.round(hi)} ft`];
+  $("runMapLegend").innerHTML = `<span>${ends[0]}</span>${RAMP.map(c => `<span class="sw" style="background:${c};margin:0"></span>`).join("")}<span>${ends[1]}</span>`;
+}
+$("mapColor").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  [...$("mapColor").children].forEach(x => x.setAttribute("aria-pressed", x === b)); S.mapColor = b.dataset.k; renderRunMap(); });
+function updateRunMarker(i) {
+  const st = RUN_CTX?.st, m = MAPS.runMap; if (!st?.lat || !m || !runMapState) return;
+  if (i == null) { runMapState.marker?.remove(); runMapState.marker = null; return; }
+  const ll = [st.lat[i], st.lon[i]];
+  if (!runMapState.marker) runMapState.marker = L.circleMarker(ll, { radius: 7, color: "#fff", weight: 3, fillColor: slot(2), fillOpacity: 1 }).addTo(m.map);
+  else runMapState.marker.setLatLng(ll);
+}
+function highlightMile(i) {
+  const st = RUN_CTX?.st, m = MAPS.runMap; if (!m || !runMapState) return;
+  runMapState.mileLayer?.remove(); runMapState.mileLayer = null;
+  highlightMileRow(i);
+  if (i == null || !st?.lat) return;
+  const mm = st.miles[i], d0 = mm.mile - 1, d1 = d0 + mm.dist;
+  const pts = st.d.map((d, j) => d >= d0 && d <= d1 ? [st.lat[j], st.lon[j]] : null).filter(Boolean);
+  if (pts.length > 1) runMapState.mileLayer = L.polyline(pts, { color: slot(2), weight: 8, opacity: 0.9 }).addTo(m.map);
+}
+
+/* =====================================================================
+   COMPARE
+   ===================================================================== */
+const CMP_METRICS = ["gap", "pace", "hr", "ele", "power", "cad", "gct", "stride", "vo"];
+const CMP_LABEL = { gap: "Time gap" };
+function fillCompareAdd() {
+  $("cmpAdd").innerHTML = `<option value="">+ Add a run…</option>` + [...RUNS].reverse().filter(r => r.hasStream && !S.compare.includes(r.id)).map(r => `<option value="${r.id}">${esc(runLabel(r))}</option>`).join("");
+  $("cmpAdd").disabled = S.compare.length >= 4;
+}
+$("cmpAdd").onchange = e => { if (e.target.value) { toggleCompare(e.target.value, true); renderCompare(); history.replaceState(null, "", `#compare=${S.compare.join(",")}`); } };
+$("cmpClear").onclick = () => { S.compare = []; renderCompare(); updateChatContext(); };
+$("cmpAsk").onclick = () => askClaude("Compare these runs in detail: pacing strategy, heart-rate response at the same distances, form metrics, terrain and weather. Which was the strongest performance relative to effort, and why?");
+$("cmpChips").addEventListener("click", e => { const b = e.target.closest("[data-rm]"); if (b) { toggleCompare(b.dataset.rm, false); renderCompare(); } });
+$("cmpMetrics").addEventListener("change", () => { S.cmpMetrics = [...$("cmpMetrics").querySelectorAll("input:checked")].map(i => i.value); renderCompareLanes(); });
+let CMP_CTX = null;
+async function renderCompare() {
+  fillCompareAdd();
+  const runs = S.compare.map(id => BY_ID[id]).filter(Boolean);
+  $("cmpChips").innerHTML = runs.map((r, i) => `<span class="run-chip"><span class="sw" style="background:${slot(i + 1)}"></span><button class="ask-link" data-open="${r.id}" style="font-weight:500;color:inherit">${esc(runLabel(r))}</button><button class="rm" data-rm="${r.id}" title="Remove">×</button></span>`).join("") || `<span class="hint">No runs selected</span>`;
+  $("cmpBody").hidden = runs.length < 2; $("cmpEmpty").hidden = runs.length >= 2;
+  if (runs.length < 2) return;
+  const sts = await Promise.all(runs.map(r => getStream(r.id)));
+  if (S.compare.join() !== runs.map(r => r.id).join()) return;
+  CMP_CTX = { runs, sts };
+  $("cmpMetrics").innerHTML = CMP_METRICS.filter(k => k === "gap" || sts.some(s => s?.[k]?.some(v => v != null))).map(k =>
+    `<label><input type="checkbox" value="${k}" ${S.cmpMetrics.includes(k) ? "checked" : ""}>${CMP_LABEL[k] || METRICS[k].label}</label>`).join("");
+  renderCompareLanes(); renderCompareTable(); renderCompareSplits(); renderCompareMap();
+}
+function renderCompareLanes() {
+  const { runs, sts } = CMP_CTX; destroyGroup("cmp"); $("cmpLanes").innerHTML = "";
+  const maxD = Math.max(...sts.map(s => s?.d.at(-1) || 0));
+  const xMiles = { type: "linear", min: 0, max: maxD, ticks: { stepSize: maxD > 8 ? 2 : 1, callback: v => v + " mi" }, grid: { display: true, color: css("--grid") } };
+  const onMove = x => { if (x == null) return cmpReadout(null); setHover("cmp", x); cmpReadout(x); };
+  // Time gap vs the first run: at each distance, how many seconds behind (+) or ahead (−)
+  const base = sts[0];
+  const timeAt = (s, d) => { const T = s.mt || s.t, i = nearestIdx(s.d, d); return T[i] + (s.d[i] !== d && i > 0 && s.d[i] !== s.d[i - 1] ? (d - s.d[i]) / (s.d[i] - s.d[i - 1]) * (T[i] - T[i - 1]) : 0); };
+  S.cmpMetrics.forEach((k, li) => {
+    const id = `cmpLane${li}`, m = k === "gap" ? { label: "Time gap vs first run", unit: "s (+ behind)", fmt: v => signed(v) } : METRICS[k];
+    $("cmpLanes").insertAdjacentHTML("beforeend", `<div class="lane"><div class="lane-title"><span>${m.label}${k === "gap" ? " (moving time)" : ""}</span><span>${m.unit}</span></div><div class="chart"><canvas id="${id}"></canvas></div></div>`);
+    let datasets;
+    if (k === "gap") {
+      datasets = sts.map((s, ri) => {
+        if (!s || !base) return null;
+        const end = Math.min(s.d.at(-1), base.d.at(-1)), pts = [];
+        for (let d = 0.05; d <= end; d += 0.05) pts.push({ x: d, y: Math.round(timeAt(s, d) - timeAt(base, d)) });
+        return { data: pts, borderColor: slot(ri + 1), borderWidth: ri === 0 ? 1 : 2, borderDash: ri === 0 ? [4, 4] : undefined, tension: 0.2 };
+      }).filter(Boolean);
+    } else {
+      datasets = sts.map((s, ri) => s?.[k] ? { data: s.d.map((d, i) => ({ x: d, y: s[k][i] })), borderColor: slot(ri + 1), borderWidth: 1.75, tension: 0.3, spanGaps: 0.4 } : null).filter(Boolean);
+    }
+    const all = k === "gap" ? datasets.flatMap(d => d.data.map(p => p.y)) : sts.flatMap(s => s?.[k] || []);
+    draw(id, { type: "line", data: { datasets }, options: laneOpts("cmp", onMove, { scales: { x: { ...xMiles, ticks: { ...xMiles.ticks, display: li === S.cmpMetrics.length - 1 } },
+      y: { reverse: !!m.reverse, ...(k === "gap" ? {} : yRange(all, k)), ticks: { callback: v => m.fmt(v), maxTicksLimit: 3 } } } }) });
+    groups.cmp.push(id);
+  });
+  cmpReadout(null);
+}
+function cmpReadout(x) {
+  const { runs, sts } = CMP_CTX;
+  updateCmpMarkers(x);
+  if (x == null) { $("cmpReadout").innerHTML = `<span class="typing" style="animation:none">Hover the charts to compare runs at the same distance</span>`; return; }
+  const base = sts[0], ib = base ? nearestIdx(base.d, x) : null;
+  $("cmpReadout").innerHTML = `<span><span class="k">At</span><b>${x.toFixed(2)} mi</b></span>` + runs.map((r, ri) => {
+    const s = sts[ri]; if (!s || x > s.d.at(-1)) return "";
+    const i = nearestIdx(s.d, x), T = s.mt || s.t, gap = base && ri > 0 && x <= base.d.at(-1) ? T[i] - (base.mt || base.t)[ib] : null;
+    return `<span><span class="k"><span class="sw" style="background:${slot(ri + 1)}"></span>${fmtDate(r.date, { month: "short", day: "numeric", year: "2-digit" })}</span><b>${fmtPace(s.pace[i])}</b>/mi · ${s.hr[i] != null ? Math.round(s.hr[i]) + " bpm" : "–"}${gap != null ? ` · ${signed(gap)}s` : ""}</span>`;
+  }).join("");
+}
+function renderCompareTable() {
+  const { runs } = CMP_CTX;
+  const rows = [["Date", r => fmtDate(r.date)], ["Distance", r => r.dist?.toFixed(2) + " mi", "dist", 0], ["Time", r => fmtDur(r.dur), "dur", 0], ["Pace", r => fmtPace(r.pace), "pace", -1],
+    ["Grade-adj. pace", r => fmtPace(r.gap), "gap", -1], ["Avg HR", r => r.hr ? Math.round(r.hr) : "–", "hr", -1], ["Max HR", r => r.hrMax ?? "–", "hrMax", 0],
+    ["Efficiency", r => r.ef?.toFixed(2) ?? "–", "ef", 1], ["Drift %", r => r.decoupling ?? "–", "decoupling", -1], ["Split Δ (s/mi)", r => r.splitDelta != null ? signed(r.splitDelta) : "–", "splitDelta", -1],
+    ["Power", r => r.power ? Math.round(r.power) + " W" : "–", "power", 0], ["Cadence", r => r.cadence ?? "–", "cadence", 1], ["Stride", r => r.stride?.toFixed(2) ?? "–", "stride", 1],
+    ["Ground contact", r => r.gct ? Math.round(r.gct) : "–", "gct", -1], ["Vertical osc.", r => r.vo?.toFixed(1) ?? "–", "vo", -1], ["Climb", r => r.elevFt != null ? r.elevFt + " ft" : "–", "elevFt", 0],
+    ["Temperature", r => r.tempF != null ? `${Math.round(r.tempF)}°F · ${r.humid}%` : "–", "tempF", 0], ["Load", r => r.trimp ?? "–", "trimp", 0]];
+  $("cmpTable").innerHTML = `<thead><tr><th class="l">Metric</th>${runs.map((r, i) => `<th><span class="sw" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${slot(i + 1)}"></span></th>`).join("")}</tr></thead><tbody>${rows.map(([l, f, k, dir]) => {
+    const vals = runs.map(r => k ? r[k] : null).filter(v => v != null);
+    const best = dir ? (dir < 0 ? Math.min(...vals) : Math.max(...vals)) : null;
+    return `<tr><td class="l">${l}</td>${runs.map(r => `<td class="${dir && vals.length > 1 && r[k] === best ? "best" : ""}"><span>${f(r)}</span></td>`).join("")}</tr>`; }).join("")}</tbody>`;
+}
+function renderCompareSplits() {
+  const { runs, sts } = CMP_CTX;
+  const n = Math.max(...sts.map(s => s?.miles.length || 0));
+  const paces = sts.flatMap(s => s?.miles.map(m => m.pace) || []);
+  const floor = Math.max(...paces) + 30; // bars rise from the slowest pace, so taller = faster
+  draw("cmpSplits", { type: "bar", data: { labels: [...Array(n)].map((_, i) => `Mile ${i + 1}`), datasets: runs.map((r, ri) => ({
+      label: fmtDate(r.date), data: [...Array(n)].map((_, i) => sts[ri]?.miles[i]?.pace ?? null), base: floor, backgroundColor: slot(ri + 1),
+      borderRadius: 4, borderColor: css("--surface-1"), borderWidth: 1, maxBarThickness: 26 })) },
+    options: merge(baseOpts(), { interaction: { mode: "index", intersect: false },
+      plugins: { tooltip: { displayColors: true, callbacks: { label: i => `${i.dataset.label}: ${fmtPace(i.raw)}/mi${sts[i.datasetIndex].miles[i.dataIndex]?.hr ? " · " + sts[i.datasetIndex].miles[i.dataIndex].hr + " bpm" : ""}` } } },
+      scales: { y: { reverse: true, max: floor, min: Math.max(0, Math.min(...paces) - 30), ticks: { callback: fmtPace } } } }) });
+  $("cmpSplitLegend").innerHTML = runs.map((r, i) => `<span><span class="sw" style="background:${slot(i + 1)}"></span>${fmtDate(r.date)} · ${r.dist.toFixed(2)} mi</span>`).join("");
+}
+let cmpMarkers = [];
+function renderCompareMap() {
+  const { runs, sts } = CMP_CTX, m = getMap("cmpMap"); if (!m) return;
+  cmpMarkers = [];
+  const all = [];
+  sts.forEach((s, i) => { if (!s?.lat) return; const pts = s.lat.map((la, j) => [la, s.lon[j]]); all.push(...pts);
+    L.polyline(pts, { color: slot(i + 1), weight: 4, opacity: 0.85 }).bindTooltip(runLabel(runs[i]), { sticky: true }).addTo(m.layers); });
+  if (all.length) m.map.fitBounds(L.latLngBounds(all), { padding: [20, 20] }); else m.map.setView([20, 0], 2);
+}
+function updateCmpMarkers(x) {
+  const m = MAPS.cmpMap; if (!m || !CMP_CTX) return;
+  cmpMarkers.forEach(mk => mk.remove()); cmpMarkers = [];
+  if (x == null) return;
+  CMP_CTX.sts.forEach((s, i) => { if (!s?.lat || x > s.d.at(-1)) return; const j = nearestIdx(s.d, x);
+    cmpMarkers.push(L.circleMarker([s.lat[j], s.lon[j]], { radius: 6, color: "#fff", weight: 2, fillColor: slot(i + 1), fillOpacity: 1 }).addTo(m.map)); });
+}
+
+/* =====================================================================
+   Tooltip for heat grids
+   ===================================================================== */
+document.addEventListener("mousemove", e => {
+  const tip = $("tip"), t = e.target.closest?.(".tipzone [data-tip]");
+  if (!t) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - 200) + "px"; tip.style.top = e.clientY - 34 + "px";
+});
+
+/* =====================================================================
+   CHAT (bridges to `claude -p` through server.py)
+   ===================================================================== */
+const CHAT = { token: null, sessionId: null, busy: false, abort: null, messages: [] };
+const SUGGEST = {
+  overview: ["How has my running changed over the last 3 months?", "Am I increasing my mileage too quickly?", "What should I focus on to get faster?"],
+  insights: ["Explain my fitness and fatigue trend", "Am I at risk of overtraining right now?", "Predict my 10K time and how to improve it"],
+  run: ["Analyze this run mile by mile", "Why did my heart rate drift on this run?", "How does this run compare with similar runs I've done?"],
+  compare: ["Compare these runs and explain the differences", "Which run was the best effort relative to heart rate?", "What changed between the oldest and newest of these runs?"],
+};
+function chatContext() {
+  const brief = r => r && { id: r.id, date: fmtDate(r.date), dist: r.dist && +r.dist.toFixed(2), pace: fmtPace(r.pace), gap: r.gap && fmtPace(r.gap), hr: r.hr && Math.round(r.hr),
+    decoupling: r.decoupling, tempF: r.tempF, elevFt: r.elevFt };
+  const ctx = { tab: S.tab };
+  if (S.tab === "overview" || S.tab === "insights") ctx.dateRange = RANGE_LABEL[S.rangeDays];
+  if (S.tab === "run") ctx.selectedRun = brief(BY_ID[S.runId]);
+  if (S.compare.length) ctx.compareRuns = S.compare.map(id => brief(BY_ID[id]));
+  return ctx;
+}
+function updateChatContext() {
+  if (!RUNS) return;
+  const c = chatContext();
+  $("chatCtx").innerHTML = "Context: " + (S.tab === "run" && c.selectedRun ? `<b>Run ${c.selectedRun.date} · ${c.selectedRun.dist} mi</b>`
+    : S.tab === "compare" ? `<b>Comparing ${S.compare.length} runs</b>` : `<b>${S.tab === "insights" ? "Insights" : "Overview"} · ${c.dateRange}</b>`) +
+    (S.tab !== "compare" && S.compare.length ? ` · ${S.compare.length} queued to compare` : "");
+  if (!CHAT.messages.length) renderMessages();
+}
+function saveChat() { try { localStorage.setItem("runlog-chat", JSON.stringify({ sessionId: CHAT.sessionId, messages: CHAT.messages.slice(-40) })); } catch {} }
+function loadChat() { try { const s = JSON.parse(localStorage.getItem("runlog-chat") || "null"); if (s) { CHAT.sessionId = s.sessionId; CHAT.messages = s.messages || []; } } catch {} }
+function md(text) {
+  if (window.marked && window.DOMPurify) return DOMPurify.sanitize(marked.parse(text, { gfm: true, breaks: false }));
+  return esc(text).replace(/\n/g, "<br>");
+}
+function renderMessages() {
+  const box = $("msgs");
+  if (!CHAT.messages.length) {
+    box.innerHTML = CHAT.token === false
+      ? `<div class="chat-intro">Chat needs the local server. Start the dashboard with <code>python3 server.py</code> in the export folder, then reload.</div>`
+      : `<div class="chat-intro">Claude can read all your run data and calculate with it. It knows which tab and run you're looking at. Try:</div>
+         <div class="suggest">${SUGGEST[S.tab].map(q => `<button data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`;
+    return;
+  }
+  box.innerHTML = CHAT.messages.map((m, i) => m.role === "user" ? `<div class="msg user">${esc(m.text)}</div>`
+    : `<div class="msg assistant" data-i="${i}">${m.tools?.length ? `<div class="tools">${m.tools.map(t => `<div title="${esc(t)}">${esc(t)}</div>`).join("")}</div>` : ""}
+       ${m.text ? md(m.text) : m.done ? "" : `<div class="typing">Thinking</div>`}${m.error ? `<div class="msg error">${esc(m.error)}</div>` : ""}</div>`).join("");
+  box.scrollTop = box.scrollHeight;
+}
+$("msgs").addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) sendChat(b.dataset.q); });
+document.addEventListener("click", e => { const b = e.target.closest("[data-ask]"); if (b) askClaude(b.dataset.ask); });
+function openChat() {
+  $("app").classList.remove("chat-closed"); $("chatFab").hidden = true;
+  if (innerWidth <= 1100) $("chat").style.display = "flex";
+  setTimeout(() => Object.values(MAPS).forEach(m => m.map.invalidateSize()), 50);
+}
+function closeChat() {
+  $("app").classList.add("chat-closed"); $("chatFab").hidden = false;
+  if (innerWidth <= 1100) $("chat").style.display = "none";
+  setTimeout(() => Object.values(MAPS).forEach(m => m.map.invalidateSize()), 50);
+}
+$("chatClose").onclick = closeChat;
+$("chatFab").onclick = openChat;
+function askClaude(q) { openChat(); sendChat(q); }
+$("chatNew").onclick = () => { if (CHAT.busy) CHAT.abort?.abort(); CHAT.sessionId = null; CHAT.messages = []; saveChat(); renderMessages(); };
+$("chatText").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("chatForm").requestSubmit(); } });
+$("chatText").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; });
+$("chatForm").addEventListener("submit", e => {
+  e.preventDefault();
+  if (CHAT.busy) { CHAT.abort?.abort(); return; }
+  const q = $("chatText").value.trim(); if (!q) return;
+  $("chatText").value = ""; $("chatText").style.height = "auto";
+  sendChat(q);
+});
+async function sendChat(q) {
+  if (CHAT.busy || !q) return;
+  if (!CHAT.token) { CHAT.messages.push({ role: "user", text: q }, { role: "assistant", text: "", done: true, error: "Chat isn't connected. Run `python3 server.py` and open the dashboard from the address it prints." }); renderMessages(); return; }
+  const reply = { role: "assistant", text: "", tools: [], done: false };
+  CHAT.messages.push({ role: "user", text: q }, reply);
+  CHAT.busy = true; $("chatSend").textContent = "Stop"; renderMessages();
+  CHAT.abort = new AbortController();
+  let pending = false;
+  const paint = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; renderMessages(); }); };
+  try {
+    const res = await fetch("api/chat", { method: "POST", signal: CHAT.abort.signal,
+      headers: { "Content-Type": "application/json", "X-Chat-Token": CHAT.token },
+      body: JSON.stringify({ message: q, context: chatContext(), sessionId: CHAT.sessionId, model: $("chatModel").value || null }) });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Server error ${res.status}`); }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "", sawTool = false;
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let k;
+      while ((k = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, k); buf = buf.slice(k + 2);
+        if (!line.startsWith("data: ")) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === "session") CHAT.sessionId = ev.sessionId;
+        else if (ev.type === "text") reply.text += ev.text;
+        else if (ev.type === "turn") { if (sawTool && reply.text && !reply.text.endsWith("\n")) reply.text += "\n\n"; }
+        else if (ev.type === "tool") { sawTool = true; reply.tools.push(`${ev.name === "Bash" ? "Calculating" : ev.name === "Read" ? "Reading" : ev.name}: ${ev.detail}`); }
+        else if (ev.type === "done") { if (ev.sessionId) CHAT.sessionId = ev.sessionId; if (ev.isError && ev.text) reply.error = ev.text; }
+        else if (ev.type === "error") reply.error = ev.text;
+        paint();
+      }
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") reply.error = err.message; else reply.error = "Stopped.";
+  } finally {
+    reply.done = true; CHAT.busy = false; $("chatSend").textContent = "Send";
+    if (!reply.text && !reply.error) reply.error = "No response.";
+    saveChat(); renderMessages();
+  }
+}
+
+/* =====================================================================
+   Boot
+   ===================================================================== */
+function parseHash() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h.startsWith("run=")) { S.runId = h.slice(4); return "run"; }
+  if (h.startsWith("compare=")) { S.compare = h.slice(8).split(",").filter(id => BY_ID[id]).slice(0, 4); return "compare"; }
+  return ["overview", "insights", "run", "compare"].includes(h) ? h : "overview";
+}
+function rerenderTheme() { renderTab(); if (S.tab === "overview") renderHeat(); }
+async function boot() {
+  let res;
+  try { res = await fetch("data/summary.json"); } catch { res = null; }
+  if (!res?.ok) {
+    $("sub").innerHTML = "Couldn't load data. Run <code>python3 build_running_data.py</code>, then <code>python3 server.py</code>, and open the address it prints.";
+    return;
+  }
+  DATA = await res.json();
+  RUNS = DATA.runs.map(r => ({ ...r, date: new Date(r.start), pace: r.dist ? r.dur / r.dist : null }));
+  BY_ID = Object.fromEntries(RUNS.map(r => [r.id, r]));
+  $("sub").textContent = `${RUNS.length} runs · ${fmtDate(RUNS[0].date)} – ${fmtDate(RUNS.at(-1).date)} · data built ${fmtDate(new Date(DATA.generated))}`;
+  fillRunSelect(); renderHeat();
+  loadChat();
+  try { const s = await fetch("api/session").then(r => r.json()); CHAT.token = s.claude ? s.token : false; } catch { CHAT.token = false; }
+  if (innerWidth <= 1100) closeChat();
+  setTab(parseHash(), { noHash: false });
+  renderMessages();
+  addEventListener("hashchange", () => { const t = parseHash(); if (t !== S.tab || t === "run" || t === "compare") setTab(t, { noHash: true }); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerenderTheme);
+  new MutationObserver(rerenderTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+}
+boot();
+</script>
+</body>
+</html>
