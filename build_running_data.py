@@ -2,15 +2,17 @@
 """Extract running data from an Apple Health export.
 
 Usage: python3 build_running_data.py [export_dir]
-Re-run whenever you drop a fresh export into the folder.
+export_dir is the unzipped apple_health_export folder (defaults to $RUNTRACK_EXPORT,
+then the current directory). Re-run whenever you drop a fresh export into that folder.
 
-Writes:
+Writes, inside export_dir (so your data stays next to the private export, not in this repo):
   data/summary.json          every run's summary + daily VO2max / resting HR / HRV trends
   data/streams/<run id>.json 10-second time series and a per-mile table for each run
 """
 import bisect
 import json
 import math
+import os
 import shutil
 import sys
 import xml.etree.ElementTree as ET
@@ -18,9 +20,9 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent)
+ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("RUNTRACK_EXPORT") or ".").expanduser().resolve()
 EXPORT = ROOT / "export.xml"
-OUT = Path(__file__).parent / "data"
+OUT = ROOT / "data"
 
 RUN = "HKWorkoutActivityTypeRunning"
 Q = "HKQuantityTypeIdentifier"
@@ -376,6 +378,9 @@ def derive(run, stream, miles):
 
 
 def main():
+    if not EXPORT.exists():
+        raise SystemExit(f"No export.xml in {ROOT}.\nPass your apple_health_export folder: "
+                         f"python3 build_running_data.py ~/path/to/apple_health_export (or set RUNTRACK_EXPORT).")
     runs, daily = [], defaultdict(lambda: defaultdict(list))
     recs = {k: [] for k in STREAM_RECORDS.values()}
     context = ET.iterparse(EXPORT, events=("start", "end"))

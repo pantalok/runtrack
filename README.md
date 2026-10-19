@@ -22,21 +22,39 @@ requests are for map tiles (OpenStreetMap) and the chart and map libraries (cdnj
 
 ## Setup
 
-1. On your iPhone: **Health → profile picture → Export All Health Data**. Unzip `export.zip`.
-2. Copy `build_running_data.py`, `server.py`, and `running.html` into the unzipped
-   `apple_health_export` folder (the one containing `export.xml` and `workout-routes/`).
-3. Build the data and start the dashboard:
+The code and your data live in separate folders. This repo holds only code. Your export,
+and everything generated from it, stays in a private folder that is never part of a git repo.
+
+1. On your iPhone: **Health → profile picture → Export All Health Data**. Unzip `export.zip`
+   anywhere private, e.g. `~/health/apple_health_export` (the folder containing `export.xml`
+   and `workout-routes/`).
+2. Clone this repo somewhere else:
 
    ```sh
-   python3 build_running_data.py   # ~20 s for a 1 GB export; writes data/
-   python3 server.py               # opens http://localhost:8765
+   git clone https://github.com/pantalok/runtrack.git ~/code/runtrack
+   cd ~/code/runtrack
    ```
 
-Re-run `build_running_data.py` whenever you drop in a fresh export.
+3. Build the data and start the dashboard, pointing both at your export folder:
+
+   ```sh
+   python3 build_running_data.py ~/health/apple_health_export   # ~20 s for a 1 GB export
+   python3 server.py ~/health/apple_health_export               # opens http://localhost:8765
+   ```
+
+   To avoid typing the path each time, set it once in your shell profile:
+
+   ```sh
+   export RUNTRACK_EXPORT=~/health/apple_health_export
+   python3 build_running_data.py && python3 server.py
+   ```
+
+The build writes `data/` inside the export folder, not inside this repo. Re-run it whenever you
+replace the export with a fresh one.
 
 Requirements: Python 3.11+ (standard library only) and a modern browser. For the chat panel, install
 [Claude Code](https://claude.com/claude-code) and run `claude` once to log in. The dashboard works
-without it.
+without it. The chat runs inside your export folder, so Claude only sees that folder's files.
 
 ## What the build step produces
 
@@ -53,7 +71,8 @@ Notes:
 
 ## Privacy
 
-`.gitignore` is an allow-list: only the source files are tracked, so `export.xml`, routes, ECGs,
-and the generated `data/` folder can't be committed by accident. The local server binds to
+Your data never enters the repo: it lives in a separate folder that you pass on the command line.
+As a second safeguard, `.gitignore` is an allow-list that tracks only the source files, so even an
+export copied into the repo by mistake can't be committed. The local server binds to
 127.0.0.1, rejects requests whose Host header isn't localhost, and requires a per-run token for
 the chat endpoint, so other websites can't trigger it.

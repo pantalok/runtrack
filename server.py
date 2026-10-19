@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Serve the running dashboard and bridge its chat panel to Claude Code.
 
-Usage: python3 server.py [--port 8765] [--no-open]
+Usage: python3 server.py [export_dir] [--port 8765] [--no-open]
 
-The chat runs `claude -p` (the Claude Code CLI) in this folder, so it uses whatever
+export_dir is the apple_health_export folder you ran build_running_data.py on
+(defaults to $RUNTRACK_EXPORT, then the current directory). The dashboard page is served
+from this repo; data/*.json is served from export_dir.
+
+The chat runs `claude -p` (the Claude Code CLI) inside export_dir, so it uses whatever
 account `claude` is logged into (your Claude subscription), not an API key.
 Claude can read the files in data/ and run python3 to analyse them; nothing else.
 """
 import argparse
 import json
 import mimetypes
+import os
 import secrets
 import shutil
 import subprocess
@@ -19,7 +24,8 @@ from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-ROOT = Path(__file__).parent.resolve()
+CODE = Path(__file__).parent.resolve()   # where running.html lives
+WORKSPACE = None                          # the private export folder, set in main()
 TOKEN = secrets.token_urlsafe(24)
 MODELS = {"opus", "sonnet", "haiku", "fable"}
 STATIC = {"running.html"}
@@ -77,8 +83,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0].lstrip("/") or "running.html"
         if path == "api/session":
             return self._send(200, {"token": TOKEN, "claude": bool(shutil.which("claude"))})
-        target = (ROOT / path).resolve()
-        allowed = path in STATIC or (target.is_relative_to(ROOT / "data") and target.suffix == ".json")
+        target = (CODE / path).resolve() if path in STATIC else (WORKSPACE / path).resolve()
+        allowed = path in STATIC or (target.is_relative_to(WORKSPACE / "data") and target.suffix == ".json")
         if not allowed or not target.is_file():
             return self._send(404, {"error": "not found"})
         self._send(200, target.read_bytes(), mimetypes.guess_type(target.name)[0] or "application/octet-stream")
@@ -116,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        proc = subprocess.Popen(cmd, cwd=WORKSPACE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 stdin=subprocess.DEVNULL, text=True, bufsize=1)
         stderr = []
         threading.Thread(target=lambda: stderr.extend(proc.stderr), daemon=True).start()
@@ -168,12 +174,18 @@ def translate(line):
 
 
 def main():
+    global WORKSPACE
     ap = argparse.ArgumentParser()
+    ap.add_argument("export_dir", nargs="?", default=os.environ.get("RUNTRACK_EXPORT") or ".",
+                    help="apple_health_export folder (default: $RUNTRACK_EXPORT, then current directory)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
     args = ap.parse_args()
-    if not (ROOT / "data" / "summary.json").exists():
-        raise SystemExit("data/summary.json not found - run `python3 build_running_data.py` first.")
+    WORKSPACE = Path(args.export_dir).expanduser().resolve()
+    if not (WORKSPACE / "data" / "summary.json").exists():
+        raise SystemExit(f"No data/summary.json in {WORKSPACE} - run "
+                         f"`python3 build_running_data.py {args.export_dir}` first, or pass the right folder.")
+    print(f"Data: {WORKSPACE}")
     url = f"http://localhost:{args.port}/"
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Running Log at {url}  (Ctrl-C to stop)")
