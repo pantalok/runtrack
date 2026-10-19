@@ -13,6 +13,12 @@ chat panel that hands questions to Claude Code.
   and comparison with your typical run of similar distance.
 - **Compare**: overlay up to 4 runs by distance, time gap vs. the first run, side-by-side stats,
   mile splits, and routes. "Compare same route" finds earlier runs on the same course.
+- **Activity**: daily steps split into walking and running (deduplicated across Watch and iPhones),
+  step goal and streaks, 12-month calendar, Apple Watch ring closure, exercise minutes, steps by hour
+  and weekday, flights climbed, year-by-year history, and walking workouts with routes.
+- **Health**: a recovery check (HRV, resting HR, breathing rate, blood oxygen, walking HR against
+  your own 60-day normal range), sleep duration, stages and schedule, heart-fitness trends, mobility
+  (walking speed, step length, asymmetry, double support, steadiness), daylight and noise exposure.
 - **Ask Claude**: a side panel that runs `claude -p` in this folder, using whatever account the
   Claude Code CLI is logged into. It knows which tab and run you're looking at and can read the
   generated data files and run `python3` to analyse them. It has no other tools.
@@ -61,6 +67,8 @@ without it. The chat runs inside your export folder, so Claude only sees that fo
 - `data/summary.json`: one record per run (distance, duration, HR, power, form metrics, weather,
   HR zones, derived metrics such as efficiency factor, aerobic decoupling, grade-adjusted pace,
   best efforts, and a simplified route) plus daily VO₂ max, resting HR, and HRV trends.
+- `data/daily.json`: per-day steps, distance, flights and activity rings, hourly steps, sleep nights,
+  daily health and mobility vitals, and walking workouts.
 - `data/streams/<run id>.json`: 10-second samples (distance, pace, HR, power, cadence, ground
   contact, stride, vertical oscillation, elevation, lat/lon) and a per-mile table.
 

@@ -8,6 +8,8 @@ then the current directory). Re-run whenever you drop a fresh export into that f
 Writes, inside export_dir (so your data stays next to the private export, not in this repo):
   data/summary.json          every run's summary + daily VO2max / resting HR / HRV trends
   data/streams/<run id>.json 10-second time series and a per-mile table for each run
+  data/daily.json            per-day steps / distance / rings, hourly steps, sleep nights,
+                             health & mobility vitals, and walking workouts
 """
 import bisect
 import json
@@ -17,7 +19,7 @@ import shutil
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("RUNTRACK_EXPORT") or ".").expanduser().resolve()
@@ -36,12 +38,6 @@ STAT_KEYS = {
     f"{Q}RunningStrideLength": ("stride", "average"),
     f"{Q}RunningVerticalOscillation": ("vo", "average"),
 }
-DAILY_RECORDS = {
-    f"{Q}VO2Max": "vo2",
-    f"{Q}RestingHeartRate": "rhr",
-    f"{Q}HeartRateVariabilitySDNN": "hrv",
-    f"{Q}HeartRateRecoveryOneMinute": "hrr",
-}
 # Per-sample records used to build in-run streams (Watch only, to avoid iPhone double counts).
 STREAM_RECORDS = {
     f"{Q}HeartRate": "hr",
@@ -52,6 +48,38 @@ STREAM_RECORDS = {
     f"{Q}RunningVerticalOscillation": "vo",
     f"{Q}StepCount": "steps",
 }
+# Cumulative quantities recorded by several devices at once (Watch + iPhones).
+# Deduplicated like Health does, approximately: per hour take the highest device total.
+HOURLY_SUM = {
+    f"{Q}StepCount": "steps",
+    f"{Q}DistanceWalkingRunning": "dist",
+    f"{Q}FlightsClimbed": "flights",
+}
+# Daily vitals: record type -> (key, scale, aggregation)
+VITALS = {
+    f"{Q}VO2Max": ("vo2", 1, "mean"),
+    f"{Q}RestingHeartRate": ("rhr", 1, "mean"),
+    f"{Q}HeartRateVariabilitySDNN": ("hrv", 1, "mean"),
+    f"{Q}HeartRateRecoveryOneMinute": ("hrr", 1, "mean"),
+    f"{Q}WalkingHeartRateAverage": ("walkHr", 1, "mean"),
+    f"{Q}RespiratoryRate": ("resp", 1, "mean"),
+    f"{Q}OxygenSaturation": ("spo2", 100, "mean"),
+    f"{Q}AppleSleepingWristTemperature": ("wristTemp", 1, "mean"),
+    f"{Q}WalkingSpeed": ("walkSpeed", 1, "mean"),
+    f"{Q}WalkingStepLength": ("stepLen", 1, "mean"),
+    f"{Q}WalkingAsymmetryPercentage": ("asym", 100, "mean"),
+    f"{Q}WalkingDoubleSupportPercentage": ("dblSupport", 100, "mean"),
+    f"{Q}AppleWalkingSteadiness": ("steadiness", 100, "mean"),
+    f"{Q}SixMinuteWalkTestDistance": ("sixMin", 1, "mean"),
+    f"{Q}TimeInDaylight": ("daylight", 1, "sum"),
+    f"{Q}HeadphoneAudioExposure": ("headphoneDb", 1, "mean"),
+    f"{Q}EnvironmentalAudioExposure": ("envDb", 1, "mean"),
+}
+RUN_TRENDS = ("vo2", "rhr", "hrv", "hrr")  # also kept in summary.json for the running pages
+WALK_TYPES = {"HKWorkoutActivityTypeWalking", "HKWorkoutActivityTypeHiking"}
+SLEEP = "HKCategoryTypeIdentifierSleepAnalysis"
+SLEEP_STAGE = {"AsleepCore": "core", "AsleepDeep": "deep", "AsleepREM": "rem",
+               "AsleepUnspecified": "asleep", "Asleep": "asleep", "Awake": "awake", "InBed": "inBed"}
 MI = 1609.344
 STEP = 10  # seconds per stream sample
 BEST_EFFORTS = {"1mi": 1.0, "5k": 3.10686, "10k": 6.21371, "half": 13.1094}
@@ -377,12 +405,92 @@ def derive(run, stream, miles):
             run["z2pace"] = round(sorted(z2)[len(z2) // 2])
 
 
+def union_minutes(intervals):
+    total, end = 0.0, None
+    for a, b in sorted(intervals):
+        if end is None or a > end:
+            total += b - a
+            end = b
+        elif b > end:
+            total += b - end
+            end = b
+    return total / 60
+
+
+def build_sleep(records):
+    """Group sleep records into nights (keyed by wake-up date) and measure each stage."""
+    nights = defaultdict(lambda: defaultdict(list))
+    for start, end, stage in records:
+        if end <= start:
+            continue
+        night = (start + timedelta(hours=12)).date().isoformat()
+        nights[night][stage].append((start.timestamp(), end.timestamp()))
+        nights[night]["_all"].append((start, end))
+    out = []
+    for night in sorted(nights):
+        n = nights[night]
+        asleep_iv = n["core"] + n["deep"] + n["rem"] + n["asleep"]
+        all_iv = n["inBed"] + asleep_iv + n["awake"]
+        in_bed = union_minutes(all_iv)
+        wake = max(b for _, b in n["_all"])
+        if in_bed < 90 or not 3 <= wake.hour < 14:  # naps and stray evening records
+            continue
+        row = {"night": night, "start": min(a for a, _ in n["_all"]).isoformat(timespec="minutes"),
+               "end": wake.isoformat(timespec="minutes"), "inBed": round(in_bed)}
+        if asleep_iv:
+            row["asleep"] = round(union_minutes(asleep_iv))
+            for k in ("core", "deep", "rem", "awake"):
+                if n[k]:
+                    row[k] = round(union_minutes(n[k]))
+        out.append(row)
+    return out
+
+
+def build_daily(hourly, daily_vals, summaries, sleep_recs, runs, walks):
+    days = sorted({d for (d, _h) in hourly} | set(summaries))
+    if not days:
+        return None
+    first, last = datetime.fromisoformat(days[0]).date(), datetime.now().date()
+    dates = [(first + timedelta(days=i)).isoformat() for i in range((last - first).days + 1)]
+    run_steps, run_dist = defaultdict(float), defaultdict(float)
+    for r in runs:
+        run_steps[r["start"][:10]] += r.get("steps") or 0
+        run_dist[r["start"][:10]] += r.get("dist") or 0
+    cols = {k: [] for k in ("date", "steps", "dist", "flights", "runSteps", "runDist", "move", "moveGoal",
+                            "exercise", "exerciseGoal", "stand", "standGoal", "hours")}
+    for d in dates:
+        hrs = {k: [0.0] * 24 for k in ("steps", "dist", "flights")}
+        for h in range(24):
+            for k, by_src in hourly.get((d, h), {}).items():
+                hrs[k][h] = max(by_src.values())
+        cols["date"].append(d)
+        cols["steps"].append(round(sum(hrs["steps"])))
+        cols["dist"].append(round(sum(hrs["dist"]), 2))
+        cols["flights"].append(round(sum(hrs["flights"])))
+        cols["runSteps"].append(round(run_steps[d]))
+        cols["runDist"].append(round(run_dist[d], 2))
+        cols["hours"].append([round(v) for v in hrs["steps"]])
+        a = summaries.get(d, {})
+        for k in ("move", "moveGoal", "exercise", "exerciseGoal", "stand", "standGoal"):
+            cols[k].append(a.get(k))
+    # Skip the near-empty days before the first real activity (e.g. a phone's first day).
+    start = next((i for i, (st, mv) in enumerate(zip(cols["steps"], cols["move"])) if st >= 500 or (mv or 0) > 0), 0)
+    cols = {k: v[start:] for k, v in cols.items()}
+    vitals = {}
+    for (key, _scale, agg) in VITALS.values():
+        by_day = daily_vals.get(key, {})
+        vitals[key] = [[d, round(sum(v) if agg == "sum" else sum(v) / len(v), 2)] for d, v in sorted(by_day.items())]
+    return {"days": cols, "sleep": build_sleep(sleep_recs), "vitals": vitals, "walks": walks}
+
+
 def main():
     if not EXPORT.exists():
         raise SystemExit(f"No export.xml in {ROOT}.\nPass your apple_health_export folder: "
                          f"python3 build_running_data.py ~/path/to/apple_health_export (or set RUNTRACK_EXPORT).")
-    runs, daily = [], defaultdict(lambda: defaultdict(list))
+    runs, walks, daily = [], [], defaultdict(lambda: defaultdict(list))
     recs = {k: [] for k in STREAM_RECORDS.values()}
+    hourly = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))  # (date, hour) -> key -> source -> sum
+    summaries, sleep_recs = {}, []
     context = ET.iterparse(EXPORT, events=("start", "end"))
     _, root = next(context)
     for event, el in context:
@@ -392,14 +500,36 @@ def main():
         if tag == "Workout":
             if el.get("workoutActivityType") == RUN:
                 runs.append(parse_workout(el))
+            elif el.get("workoutActivityType") in WALK_TYPES:
+                walks.append(parse_workout(el))
+            root.clear()
+        elif tag == "ActivitySummary":
+            g = el.get
+            summaries[g("dateComponents")] = {
+                "move": num(g("activeEnergyBurned")), "moveGoal": num(g("activeEnergyBurnedGoal")),
+                "exercise": num(g("appleExerciseTime")), "exerciseGoal": num(g("appleExerciseTimeGoal")),
+                "stand": num(g("appleStandHours")), "standGoal": num(g("appleStandHoursGoal"))}
             root.clear()
         elif tag == "Record":
             typ = el.get("type")
-            key = DAILY_RECORDS.get(typ)
-            if key:
+            vital = VITALS.get(typ)
+            if vital:
                 v = num(el.get("value"))
                 if v is not None:
-                    daily[key][el.get("startDate")[:10]].append(v)
+                    daily[vital[0]][el.get("startDate")[:10]].append(v * vital[1])
+            hkey = HOURLY_SUM.get(typ)
+            if hkey:
+                v = num(el.get("value"))
+                if v is not None:
+                    if hkey == "dist" and el.get("unit") == "km":
+                        v /= 1.609344
+                    sd = el.get("startDate")
+                    hourly[(sd[:10], int(sd[11:13]))][hkey][el.get("sourceName")] += v
+            elif typ == SLEEP:
+                stage = SLEEP_STAGE.get(el.get("value", "").replace("HKCategoryValueSleepAnalysis", ""))
+                if stage:
+                    sleep_recs.append((datetime.fromisoformat(el.get("startDate").replace(" -", "-").replace(" +", "+")),
+                                       datetime.fromisoformat(el.get("endDate").replace(" -", "-").replace(" +", "+")), stage))
             skey = STREAM_RECORDS.get(typ)
             if skey and "Watch" in (el.get("sourceName") or ""):
                 v = num(el.get("value"))
@@ -447,14 +577,33 @@ def main():
         for k in ("_t0", "_t1", "_pauses", "_zoneBounds"):
             r.pop(k, None)
 
-    trends = {k: sorted([d, round(sum(v) / len(v), 1)] for d, v in days.items())
-              for k, days in daily.items()}
+    trends = {k: sorted([d, round(sum(v) / len(v), 1)] for d, v in daily[k].items()) for k in RUN_TRENDS}
+
+    # Walking workouts: summaries and simplified routes (no streams).
+    walks.sort(key=lambda w: w["_t0"])
+    for w in walks:
+        w["id"] = datetime.fromisoformat(w["start"]).strftime("w%Y%m%d-%H%M")
+        gpx_path = ROOT / w.pop("_gpx", "") if w.get("_gpx") else None
+        gpx = read_gpx(gpx_path) if gpx_path and gpx_path.exists() else None
+        if gpx and len(gpx) > 1:
+            step = max(1, len(gpx) // 150)
+            w["route"] = [[round(p[1], 5), round(p[2], 5)] for p in gpx[::step]]
+        for k in ("_t0", "_t1", "_pauses", "_zoneBounds", "zones", "power", "gct", "stride", "vo"):
+            w.pop(k, None)
+    walks = [w for w in walks if (w.get("dist") or 0) >= 0.1 or w["dur"] >= 600]
+    daily_out = build_daily(hourly, daily, summaries, sleep_recs, kept, walks)
+    if daily_out:
+        (OUT / "daily.json").write_text(json.dumps(
+            {"generated": datetime.now().isoformat(timespec="seconds"), **daily_out}, separators=(",", ":")))
     (OUT / "summary.json").write_text(json.dumps(
         {"generated": datetime.now().isoformat(timespec="seconds"), "runs": kept, "trends": trends},
         separators=(",", ":")))
     size = sum(f.stat().st_size for f in OUT.rglob("*.json")) // 1024
     print(f"{len(kept)} runs ({dropped} duplicate imports dropped), {sum('route' in r for r in kept)} with routes, "
           f"{n_streams} with streams -> {OUT}/ ({size} KB)")
+    if daily_out:
+        print(f"{len(daily_out['days']['date'])} days of activity, {len(daily_out['sleep'])} sleep nights, "
+              f"{len(walks)} walking workouts")
 
 
 if __name__ == "__main__":
