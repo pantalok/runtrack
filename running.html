@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Running Log</title>
+<title>RunTrack</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root {
@@ -220,7 +220,8 @@ td.best span { font-weight: 700; }
 <div class="wrap">
   <header>
     <div>
-      <h1>Running Log</h1>
+      <div class="toolbar" style="gap:12px"><h1>RunTrack</h1>
+        <select class="btn" id="profileSel" aria-label="Whose data" title="Switch person" hidden></select></div>
       <div class="sub" id="sub">Loading…</div>
     </div>
     <div class="toolbar">
@@ -613,7 +614,7 @@ try { S.stepGoal = +localStorage.getItem("runlog-step-goal") || 10000; } catch {
 const streams = {};
 const charts = {};
 async function getStream(id) {
-  if (!streams[id]) streams[id] = fetch(`data/streams/${id}.json`).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!streams[id]) streams[id] = fetch(dataUrl(`data/streams/${id}.json`)).then(r => r.ok ? r.json() : null).catch(() => null);
   return streams[id];
 }
 function inRange() {
@@ -730,7 +731,9 @@ const RAMP = ["#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", 
 const TABS = ["overview", "insights", "run", "compare", "activity", "health"];
 const RANGED_TABS = ["overview", "insights", "activity", "health"];
 const TAB_NAME = { overview: "Running", insights: "Insights", run: "Run", compare: "Compare", activity: "Activity", health: "Health" };
+const RUN_TABS = ["overview", "insights", "run", "compare"];
 function setTab(tab, opts = {}) {
+  if (NO_RUNS && RUN_TABS.includes(tab)) tab = "activity";
   S.tab = tab;
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
   TABS.forEach(t => $(`tab-${t}`).hidden = t !== tab);
@@ -1508,7 +1511,7 @@ function insightCard(c) {
 }
 async function loadDaily() {
   if (DAILY) return DAILY;
-  try { const r = await fetch("data/daily.json"); if (r.ok) DAILY = await r.json(); } catch {}
+  try { const r = await fetch(dataUrl("data/daily.json")); if (r.ok) DAILY = await r.json(); } catch {}
   if (!DAILY) return null;
   const D = DAILY.days;
   DAYS = D.date.map((d, i) => {
@@ -1850,6 +1853,7 @@ function chatContext() {
   const brief = r => r && { id: r.id, date: fmtDate(r.date), dist: r.dist && +r.dist.toFixed(2), pace: fmtPace(r.pace), gap: r.gap && fmtPace(r.gap), hr: r.hr && Math.round(r.hr),
     decoupling: r.decoupling, tempF: r.tempF, elevFt: r.elevFt };
   const ctx = { tab: S.tab };
+  if (PROFILE) ctx.person = PROFILE;
   if (RANGED_TABS.includes(S.tab)) ctx.dateRange = RANGE_LABEL[S.rangeDays];
   if (S.tab === "activity") ctx.stepGoal = S.stepGoal;
   if (S.tab === "run") ctx.selectedRun = brief(BY_ID[S.runId]);
@@ -1864,8 +1868,8 @@ function updateChatContext() {
     (S.tab !== "compare" && S.compare.length ? ` · ${S.compare.length} queued to compare` : "");
   if (!CHAT.messages.length) renderMessages();
 }
-function saveChat() { try { localStorage.setItem("runlog-chat", JSON.stringify({ sessionId: CHAT.sessionId, messages: CHAT.messages.slice(-40) })); } catch {} }
-function loadChat() { try { const s = JSON.parse(localStorage.getItem("runlog-chat") || "null"); if (s) { CHAT.sessionId = s.sessionId; CHAT.messages = s.messages || []; } } catch {} }
+function saveChat() { try { localStorage.setItem(chatKey(), JSON.stringify({ sessionId: CHAT.sessionId, messages: CHAT.messages.slice(-40) })); } catch {} }
+function loadChat() { try { const s = JSON.parse(localStorage.getItem(chatKey()) || "null"); if (s) { CHAT.sessionId = s.sessionId; CHAT.messages = s.messages || []; } } catch {} }
 function md(text) {
   if (window.marked && window.DOMPurify) return DOMPurify.sanitize(marked.parse(text, { gfm: true, breaks: false }));
   return esc(text).replace(/\n/g, "<br>");
@@ -1875,7 +1879,7 @@ function renderMessages() {
   if (!CHAT.messages.length) {
     box.innerHTML = CHAT.token === false
       ? `<div class="chat-intro">Chat needs the local server. Start the dashboard with <code>python3 server.py</code> in the export folder, then reload.</div>`
-      : `<div class="chat-intro">Claude can read all your run data and calculate with it. It knows which tab and run you're looking at. Try:</div>
+      : `<div class="chat-intro">Claude can read all of this data and calculate with it. It knows which tab and run you're looking at. Try:</div>
          <div class="suggest">${SUGGEST[S.tab].map(q => `<button data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`;
     return;
   }
@@ -1921,7 +1925,7 @@ async function sendChat(q) {
   try {
     const res = await fetch("api/chat", { method: "POST", signal: CHAT.abort.signal,
       headers: { "Content-Type": "application/json", "X-Chat-Token": CHAT.token },
-      body: JSON.stringify({ message: q, context: chatContext(), sessionId: CHAT.sessionId, model: $("chatModel").value || null }) });
+      body: JSON.stringify({ message: q, context: chatContext(), sessionId: CHAT.sessionId, model: $("chatModel").value || null, profile: PROFILE }) });
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Server error ${res.status}`); }
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = "", sawTool = false;
@@ -1961,9 +1965,26 @@ function parseHash() {
   return TABS.includes(h) ? h : "overview";
 }
 function rerenderTheme() { renderTab(); if (S.tab === "overview") renderHeat(); }
+/* Profiles: one server can hold several people's exports (python3 server.py Me=... Partner=...) */
+let PROFILE = null, NO_RUNS = false;
+const dataUrl = path => PROFILE ? `${path}?profile=${encodeURIComponent(PROFILE)}` : path;
+const chatKey = () => PROFILE ? `runlog-chat:${PROFILE}` : "runlog-chat";
+function setupProfiles(profiles) {
+  const want = new URLSearchParams(location.search).get("profile");
+  PROFILE = profiles?.length ? (profiles.includes(want) ? want : profiles[0]) : null;
+  const sel = $("profileSel");
+  sel.hidden = !profiles || profiles.length < 2;
+  sel.innerHTML = (profiles || []).map(p => `<option ${p === PROFILE ? "selected" : ""}>${esc(p)}</option>`).join("");
+  sel.onchange = () => { location.href = `?profile=${encodeURIComponent(sel.value)}${location.hash.startsWith("#run") || location.hash.startsWith("#compare") ? "" : location.hash}`; };
+  if (PROFILE) document.title = `RunTrack · ${PROFILE}`;
+}
 async function boot() {
+  let session = null;
+  try { session = await fetch("api/session").then(r => r.json()); } catch {}
+  CHAT.token = session?.claude ? session.token : false;
+  setupProfiles(session?.profiles);
   let res;
-  try { res = await fetch("data/summary.json"); } catch { res = null; }
+  try { res = await fetch(dataUrl("data/summary.json")); } catch { res = null; }
   if (!res?.ok) {
     $("sub").innerHTML = "Couldn't load data. Run <code>python3 build_running_data.py</code>, then <code>python3 server.py</code>, and open the address it prints.";
     return;
@@ -1971,10 +1992,17 @@ async function boot() {
   DATA = await res.json();
   RUNS = DATA.runs.map(r => ({ ...r, date: new Date(r.start), pace: r.dist ? r.dur / r.dist : null }));
   BY_ID = Object.fromEntries(RUNS.map(r => [r.id, r]));
-  $("sub").textContent = `${RUNS.length} runs · ${fmtDate(RUNS[0].date)} – ${fmtDate(RUNS.at(-1).date)} · data built ${fmtDate(new Date(DATA.generated))}`;
-  fillRunSelect(); renderHeat();
+  NO_RUNS = !RUNS.length;
+  if (NO_RUNS) $("chatText").placeholder = "Ask about activity, sleep and health…";
+  RUN_TABS.forEach(t => { document.querySelector(`#tabs [data-tab="${t}"]`).hidden = NO_RUNS; });
+  if (NO_RUNS) {
+    const daily = await loadDaily();
+    $("sub").textContent = daily ? `No runs recorded · ${DAYS.length.toLocaleString()} days of activity since ${fmtDate(DAYS[0].date)} · data built ${fmtDate(new Date(DATA.generated))}` : "No runs recorded";
+  } else {
+    $("sub").textContent = `${RUNS.length} runs · ${fmtDate(RUNS[0].date)} – ${fmtDate(RUNS.at(-1).date)} · data built ${fmtDate(new Date(DATA.generated))}`;
+    fillRunSelect(); renderHeat();
+  }
   loadChat();
-  try { const s = await fetch("api/session").then(r => r.json()); CHAT.token = s.claude ? s.token : false; } catch { CHAT.token = false; }
   if (innerWidth <= 1100) closeChat();
   setTab(parseHash(), { noHash: false });
   renderMessages();

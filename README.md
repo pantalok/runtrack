@@ -55,6 +55,20 @@ and everything generated from it, stays in a private folder that is never part o
    python3 build_running_data.py && python3 server.py
    ```
 
+### Several people
+
+Build each person's export separately, then pass all the folders to one server, labelled with
+`Name=path`. A switcher appears next to the title, and each person gets their own chat history.
+Claude only sees the selected person's folder.
+
+```sh
+python3 build_running_data.py ~/health/me
+python3 build_running_data.py ~/health/partner
+python3 server.py Me=~/health/me Partner=~/health/partner
+```
+
+Profiles without any runs open on the Activity tab and hide the running pages.
+
 The build writes `data/` inside the export folder, not inside this repo. Re-run it whenever you
 replace the export with a fresh one.
 
