@@ -171,6 +171,19 @@ td.best span { font-weight: 700; }
 .ring-top span { color: var(--text-secondary); }
 .bar-track { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-top: 6px; }
 .bar-track div { height: 100%; background: var(--series-1); border-radius: 4px; }
+.plan-map { height: 560px; cursor: crosshair; }
+.plan-tools { margin: 6px 0 10px; }
+.plan-tools .divider { width: 1px; height: 24px; background: var(--border); }
+.inline { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text-secondary); }
+input.num { width: 76px; }
+input.btn { cursor: text; }
+.wp-pin { background: #fff; border: 3px solid var(--series-1); border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.45); cursor: grab; }
+.wp-pin.start { border-color: var(--series-3); }
+.wp-pin.end { border-color: var(--series-2); }
+.mile-pin { background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--text-muted); border-radius: 50%; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.turn-pin { background: var(--text-primary); color: var(--surface-1); padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 650;
+  white-space: nowrap; width: auto !important; height: auto !important; box-shadow: 0 2px 8px rgba(0,0,0,.35); transform: translate(-50%, -150%); }
 
 /* ---------- chat ---------- */
 #chat {
@@ -232,6 +245,7 @@ td.best span { font-weight: 700; }
         <button role="tab" data-tab="compare">Compare</button>
         <button role="tab" data-tab="activity">Activity</button>
         <button role="tab" data-tab="health">Health</button>
+        <button role="tab" data-tab="plan">Plan</button>
       </div>
       <div class="seg" id="range" role="group" aria-label="Date range">
         <button data-days="30">30D</button>
@@ -374,6 +388,7 @@ td.best span { font-weight: 700; }
       <button class="btn" id="nextRun" title="Newer run">›</button>
       <button class="btn" id="runAddCompare">+ Compare</button>
       <button class="btn" id="runSimilar">Same-route runs</button>
+      <button class="btn" id="runPlan">Plan from this route</button>
       <button class="btn primary" id="runAsk">Ask Claude about this run</button>
     </div>
     <div class="grid">
@@ -521,6 +536,61 @@ td.best span { font-weight: 700; }
       <div class="card span-12"><h2>Mobility</h2><p class="hint">Apple's walking-quality measures, monthly averages. Higher speed, step length and steadiness are better; lower asymmetry and double-support time are better.</p><div class="form-grid" id="mobilityMini"></div></div>
       <div class="card span-12"><h2>Environment</h2><p class="hint">Time in daylight and sound exposure, 7-day averages. Sustained headphone audio above 80 dB can damage hearing over time.</p><div class="form-grid" id="envMini"></div></div>
     </div>
+  </section>
+
+  <!-- ======================= PLAN ======================= -->
+  <section id="tab-plan" hidden>
+    <div class="grid">
+      <div class="card span-8">
+        <div class="card-head">
+          <div><h2>Route planner</h2><p class="hint">Click the map to add points; drag a point to move it. Mile markers appear as you go.</p></div>
+          <label class="inline"><input type="checkbox" id="planSnap" checked> Follow roads &amp; paths</label>
+        </div>
+        <div class="toolbar plan-tools">
+          <button class="btn" id="planUndo">Undo</button>
+          <button class="btn" id="planClear">Clear</button>
+          <button class="btn" id="planReverse">Reverse</button>
+          <button class="btn" id="planLoop">Loop to start</button>
+          <button class="btn" id="planOutBack">Out &amp; back</button>
+          <span class="divider"></span>
+          <label class="inline">Target <input class="btn num" id="planTarget" type="number" min="0.5" step="0.5" value="6"> mi</label>
+          <button class="btn" id="planMakeOB" title="Cut the route at half the target and come back the same way">Make out &amp; back</button>
+          <span class="divider"></span>
+          <label class="inline"><input type="checkbox" id="planHills"> Color hills</label>
+        </div>
+        <div class="map plan-map" id="planMap"></div>
+        <div class="legend" id="planLegend"></div>
+        <p class="note" id="planStatus"></p>
+      </div>
+      <div class="card span-4">
+        <h2>This route</h2>
+        <p class="hint">Elevation from a 90 m terrain model, so short bumps are smoothed out</p>
+        <div id="planStats"></div>
+        <label class="inline" style="margin-top:14px">Your flat pace <input class="btn num" id="planPace" placeholder="10:00"> /mi</label>
+        <p class="note" id="planPaceNote" style="margin-top:6px"></p>
+        <h2 style="margin-top:18px">Similar past routes</h2>
+        <div id="planSimilar" class="hint"></div>
+        <button class="btn primary" id="planAsk" style="margin-top:12px">Ask Claude about this route</button>
+      </div>
+      <div class="card span-12">
+        <h2>Elevation profile</h2>
+        <div class="readout" id="planReadout"></div>
+        <div class="chart"><canvas id="planElev"></canvas></div>
+      </div>
+      <div class="card span-12">
+        <div class="card-head">
+          <div><h2>Saved routes</h2><p class="hint">Kept in this browser. Export GPX to load a route onto your watch or another app.</p></div>
+          <div class="toolbar">
+            <input class="btn" id="planName" placeholder="Route name" aria-label="Route name">
+            <button class="btn primary" id="planSave">Save</button>
+            <button class="btn" id="planGpx">Export GPX</button>
+            <label class="btn" style="cursor:pointer">Import GPX<input type="file" id="planImport" accept=".gpx,application/gpx+xml" hidden></label>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="planSaved"></table></div>
+      </div>
+    </div>
+    <p class="note">Planning sends only the points you place to two free services: routing.openstreetmap.de (OSRM) to follow roads and paths, and Open-Meteo for elevation. None of your health data is sent.</p>
   </section>
 
   <div class="compare-bar" id="compareBar" hidden>
@@ -728,9 +798,9 @@ const RAMP = ["#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", 
 /* =====================================================================
    Tabs, routing, range
    ===================================================================== */
-const TABS = ["overview", "insights", "run", "compare", "activity", "health"];
+const TABS = ["overview", "insights", "run", "compare", "activity", "health", "plan"];
 const RANGED_TABS = ["overview", "insights", "activity", "health"];
-const TAB_NAME = { overview: "Running", insights: "Insights", run: "Run", compare: "Compare", activity: "Activity", health: "Health" };
+const TAB_NAME = { overview: "Running", insights: "Insights", run: "Run", compare: "Compare", activity: "Activity", health: "Health", plan: "Plan" };
 const RUN_TABS = ["overview", "insights", "run", "compare"];
 function setTab(tab, opts = {}) {
   if (NO_RUNS && RUN_TABS.includes(tab)) tab = "activity";
@@ -753,6 +823,7 @@ function renderTab() {
   else if (S.tab === "compare") renderCompare();
   else if (S.tab === "activity") renderActivity();
   else if (S.tab === "health") renderHealth();
+  else if (S.tab === "plan") renderPlan();
   renderCompareBar();
 }
 $("tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); });
@@ -1156,6 +1227,9 @@ $("nextRun").onclick = () => { const i = RUNS.indexOf(BY_ID[S.runId]); if (i < R
 $("runAddCompare").onclick = () => { if (!toggleCompare(S.runId)) alertCompareFull(); renderRunButtons(); };
 $("runSimilar").onclick = () => { const r = BY_ID[S.runId]; const sim = sameRoute(r).slice(0, 3);
   S.compare = [r.id, ...sim.map(x => x.id)]; setTab("compare"); };
+$("runPlan").onclick = () => { const r = BY_ID[S.runId]; if (!r?.route) return;
+  planSnapshot(); PLAN.wps = [r.route[0], r.route.at(-1)]; PLAN.segs = [{ coords: r.route, snapped: true }]; PLAN.pendingFit = true;
+  $("planName").value = `Route from ${fmtDate(r.date)}`; setTab("plan"); };
 $("runAsk").onclick = () => askClaude("Analyze this run in depth: pacing mile by mile, heart rate response, drift, form metrics, and the conditions. What went well, and what should I do differently next time?");
 function alertCompareFull() { $("runAddCompare").textContent = "Compare is full (4)"; setTimeout(renderRunButtons, 1500); }
 function renderRunButtons() {
@@ -1163,6 +1237,7 @@ function renderRunButtons() {
   $("runAddCompare").textContent = on ? "✓ In compare" : "+ Compare";
   const sim = BY_ID[S.runId] ? sameRoute(BY_ID[S.runId]) : [];
   $("runSimilar").disabled = !sim.length;
+  $("runPlan").disabled = !BY_ID[S.runId]?.route;
   $("runSimilar").textContent = sim.length ? `Compare same route (${sim.length})` : "No same-route runs";
   $("prevRun").disabled = RUNS[0].id === S.runId; $("nextRun").disabled = RUNS.at(-1).id === S.runId;
 }
@@ -1252,7 +1327,7 @@ function renderRunLanes() {
   const { st } = ctx, ks = S.runMetrics;
   if (!ks.length) { $("runReadout").innerHTML = "Pick at least one metric above."; return; }
   const maxD = st.d.at(-1);
-  const xMiles = { type: "linear", min: 0, max: maxD, ticks: { stepSize: maxD > 8 ? 2 : 1, callback: v => v + " mi" }, grid: { display: true, color: css("--grid") } };
+  const xMiles = { type: "linear", min: 0, max: maxD, ticks: { stepSize: maxD > 8 ? 2 : 1, callback: v => +v.toFixed(1) + " mi" }, grid: { display: true, color: css("--grid") } };
   const onMove = x => { if (x == null) return runReadout(null); const i = nearestIdx(st.d, x); setHover("run", st.d[i]); runReadout(i); };
 
   if (S.runMode === "mile") {
@@ -1415,7 +1490,7 @@ async function renderCompare() {
 function renderCompareLanes() {
   const { runs, sts } = CMP_CTX; destroyGroup("cmp"); $("cmpLanes").innerHTML = "";
   const maxD = Math.max(...sts.map(s => s?.d.at(-1) || 0));
-  const xMiles = { type: "linear", min: 0, max: maxD, ticks: { stepSize: maxD > 8 ? 2 : 1, callback: v => v + " mi" }, grid: { display: true, color: css("--grid") } };
+  const xMiles = { type: "linear", min: 0, max: maxD, ticks: { stepSize: maxD > 8 ? 2 : 1, callback: v => +v.toFixed(1) + " mi" }, grid: { display: true, color: css("--grid") } };
   const onMove = x => { if (x == null) return cmpReadout(null); setHover("cmp", x); cmpReadout(x); };
   // Time gap vs the first run: at each distance, how many seconds behind (+) or ahead (−)
   const base = sts[0];
@@ -1827,6 +1902,345 @@ function renderSleep() {
     row("Avg wake-up", clock(mean(bars.map(b => b[1]))), `± ${Math.round(sd(bars.map(b => b[1])) * 60)} min`);
 }
 
+
+/* =====================================================================
+   PLAN (route planner: OSRM foot routing + Open-Meteo elevation)
+   ===================================================================== */
+const OSRM = "https://routing.openstreetmap.de/routed-foot/route/v1/driving/";
+const ELEV_API = "https://api.open-meteo.com/v1/elevation";
+const M_PER_MI = 1609.344, FT = 3.28084;
+const PLAN = { wps: [], segs: [], undo: [], samples: [], cs: [], cum: [0], elevVer: 0, map: null, layers: null, hillLayer: null, marker: null, pendingFit: false };
+const ELEV_CACHE = new Map();
+let planChain = Promise.resolve(), planStatusTimer;
+const planQueue = fn => (planChain = planChain.then(fn).catch(err => planStatus(`Something went wrong: ${err.message}`)));
+function planStatus(msg) { $("planStatus").textContent = msg; clearTimeout(planStatusTimer); if (msg) planStatusTimer = setTimeout(() => $("planStatus").textContent = "", 8000); }
+function hav(a, b) {
+  const R = 6371000, r = Math.PI / 180, dLa = (b[0] - a[0]) * r, dLo = (b[1] - a[1]) * r;
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function joinSegs() {
+  const out = [];
+  PLAN.segs.forEach(sg => sg.coords.forEach(c => { const last = out.at(-1); if (!last || last[0] !== c[0] || last[1] !== c[1]) out.push(c); }));
+  return out.length ? out : PLAN.wps.slice(0, 1);
+}
+function cumDist(cs) { const c = [0]; for (let i = 1; i < cs.length; i++) c.push(c[i - 1] + hav(cs[i - 1], cs[i])); return c; }
+function along(cs, cum, d) {
+  if (d <= 0 || cs.length < 2) return cs[0];
+  let lo = 1, hi = cum.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < d) lo = m + 1; else hi = m; }
+  const f = Math.min(1, (d - cum[lo - 1]) / ((cum[lo] - cum[lo - 1]) || 1));
+  return [cs[lo - 1][0] + (cs[lo][0] - cs[lo - 1][0]) * f, cs[lo - 1][1] + (cs[lo][1] - cs[lo - 1][1]) * f];
+}
+function sliceTo(cs, cum, d) { const out = []; for (let i = 0; i < cs.length && cum[i] < d; i++) out.push(cs[i]); out.push(along(cs, cum, d)); return out; }
+const parsePace = v => { const m = String(v).trim().match(/^(\d{1,2}):([0-5]\d)$/); return m ? +m[1] * 60 + +m[2] : null; };
+const costRatio = g => { // Minetti running cost vs flat, with downhill benefit capped (real paces don't drop that much)
+  g = Math.max(-0.3, Math.min(0.3, g));
+  return Math.max(0.88, (155.4 * g ** 5 - 30.4 * g ** 4 - 43.3 * g ** 3 + 46.3 * g ** 2 + 19.5 * g + 3.6) / 3.6);
+};
+function planSnapshot() { PLAN.undo.push(JSON.stringify({ wps: PLAN.wps, segs: PLAN.segs })); if (PLAN.undo.length > 60) PLAN.undo.shift(); }
+
+async function routeLeg(a, b) {
+  if (!$("planSnap").checked) return { coords: [a, b], snapped: false };
+  try {
+    const r = await fetch(`${OSRM}${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson`).then(x => x.json());
+    if (r.code !== "Ok" || !r.routes?.length) throw new Error(r.message || r.code);
+    const coords = r.routes[0].geometry.coordinates.map(([lo, la]) => [+la.toFixed(6), +lo.toFixed(6)]);
+    const loc = w => w?.location ? [+w.location[1].toFixed(6), +w.location[0].toFixed(6)] : null;
+    return { coords, snapped: true, start: loc(r.waypoints?.[0]), end: loc(r.waypoints?.[1]) };
+  } catch {
+    planStatus("Couldn't reach the routing service, so that leg is a straight line. Try again or untick “Follow roads”.");
+    return { coords: [a, b], snapped: false };
+  }
+}
+const segOf = l => ({ coords: l.coords, snapped: l.snapped });
+async function addPoint(ll) {
+  planSnapshot();
+  const p = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)];
+  if (!PLAN.wps.length) { PLAN.wps.push(p); return drawPlan(); }
+  const leg = await routeLeg(PLAN.wps.at(-1), p);
+  if (leg.start && PLAN.wps.length === 1) PLAN.wps[0] = leg.start;
+  PLAN.wps.push(leg.end || p);
+  PLAN.segs.push(segOf(leg));
+  drawPlan();
+}
+async function moveWp(i, ll) {
+  planSnapshot();
+  PLAN.wps[i] = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)];
+  if (i > 0) { const l = await routeLeg(PLAN.wps[i - 1], PLAN.wps[i]); PLAN.segs[i - 1] = segOf(l); if (l.end) PLAN.wps[i] = l.end; }
+  if (i < PLAN.wps.length - 1) { const l = await routeLeg(PLAN.wps[i], PLAN.wps[i + 1]); PLAN.segs[i] = segOf(l); }
+  drawPlan();
+}
+const reversedSegs = segs => [...segs].reverse().map(sg => ({ ...sg, coords: [...sg.coords].reverse() }));
+$("planUndo").onclick = () => planQueue(() => { const prev = PLAN.undo.pop(); if (!prev) return; Object.assign(PLAN, JSON.parse(prev)); drawPlan(); });
+$("planClear").onclick = () => planQueue(() => { if (!PLAN.wps.length) return; planSnapshot(); PLAN.wps = []; PLAN.segs = []; drawPlan(); });
+$("planReverse").onclick = () => planQueue(() => { if (PLAN.wps.length < 2) return; planSnapshot(); PLAN.wps.reverse(); PLAN.segs = reversedSegs(PLAN.segs); drawPlan(); });
+$("planOutBack").onclick = () => planQueue(() => {
+  if (PLAN.wps.length < 2) return planStatus("Draw the way out first, then press Out & back.");
+  planSnapshot(); PLAN.wps = [...PLAN.wps, ...PLAN.wps.slice(0, -1).reverse()]; PLAN.segs = [...PLAN.segs, ...reversedSegs(PLAN.segs)]; drawPlan();
+});
+$("planLoop").onclick = () => planQueue(async () => {
+  if (PLAN.wps.length < 2) return planStatus("Add at least two points first.");
+  planSnapshot(); const leg = await routeLeg(PLAN.wps.at(-1), PLAN.wps[0]); PLAN.wps.push(PLAN.wps[0]); PLAN.segs.push(segOf(leg)); drawPlan();
+});
+$("planMakeOB").onclick = () => planQueue(() => {
+  const target = +$("planTarget").value, half = target * M_PER_MI / 2, total = PLAN.cum.at(-1) || 0;
+  if (!(target > 0)) return planStatus("Enter a target distance first.");
+  if (total < half) return planStatus(`Draw at least ${(target / 2).toFixed(2)} mi out first (you have ${(total / M_PER_MI).toFixed(2)} mi).`);
+  const out = sliceTo(PLAN.cs, PLAN.cum, half);
+  planSnapshot(); PLAN.wps = [out[0], out.at(-1), out[0]]; PLAN.segs = [{ coords: out, snapped: true }, { coords: [...out].reverse(), snapped: true }]; drawPlan();
+  planStatus(`Turn around at ${(target / 2).toFixed(2)} mi for a ${target} mi out & back.`);
+});
+$("planTarget").oninput = () => drawPlan(false);
+$("planHills").onchange = () => drawHills();
+$("planPace").onchange = () => { const v = parsePace($("planPace").value); if (!v) { $("planPaceNote").textContent = "Use minutes:seconds, e.g. 9:45"; return; } renderPlanStats(); };
+
+function planPace() { return parsePace($("planPace").value) || defaultPace().pace; }
+function defaultPace() {
+  const recent = (RUNS || []).filter(r => r.date > Date.now() - 60 * DAY && r.dist >= 2);
+  const p = median(recent.map(r => r.gap || r.pace)) || median((RUNS || []).slice(-20).map(r => r.gap || r.pace));
+  if (p) return { pace: p, note: `Your median flat-equivalent pace on recent runs. Change it to plan a faster or easier day.` };
+  const w = median((DAILY?.walks || []).slice(-30).filter(x => x.dist >= 0.5).map(x => x.dur / x.dist));
+  if (w) return { pace: w, note: "Your typical walking pace. Change it if you plan to run." };
+  return { pace: 600, note: "Set the pace you expect to hold on flat ground." };
+}
+function drawPlan(reloadElevation = true) {
+  if (!PLAN.map) return;
+  PLAN.layers.clearLayers();
+  const cs = joinSegs(), cum = cumDist(cs), total = cum.at(-1) || 0;
+  PLAN.cs = cs; PLAN.cum = cum;
+  if (cs.length > 1) L.polyline(cs, { color: slot(1), weight: 5, opacity: 0.9, interactive: false }).addTo(PLAN.layers);
+  for (let mi = 1; mi * M_PER_MI < total; mi++)
+    L.marker(along(cs, cum, mi * M_PER_MI), { icon: L.divIcon({ className: "mile-pin", html: String(mi), iconSize: [20, 20] }), interactive: false, keyboard: false }).addTo(PLAN.layers);
+  PLAN.wps.forEach((p, i) => {
+    const cls = i === 0 ? "start" : i === PLAN.wps.length - 1 ? "end" : "";
+    const mk = L.marker(p, { draggable: true, icon: L.divIcon({ className: `wp-pin ${cls}`, iconSize: [16, 16] }), title: i === 0 ? "Start" : i === PLAN.wps.length - 1 ? "End" : `Point ${i + 1}` });
+    mk.on("dragend", e => planQueue(() => moveWp(i, e.target.getLatLng())));
+    mk.addTo(PLAN.layers);
+  });
+  const target = +$("planTarget").value * M_PER_MI / 2, closed = cs.length > 2 && hav(cs[0], cs.at(-1)) < 80;
+  if (target > 0 && total >= target && !closed)
+    L.marker(along(cs, cum, target), { icon: L.divIcon({ className: "turn-pin", html: `Turn here for ${(+$("planTarget").value).toFixed(1)} mi out &amp; back`, iconSize: null }), interactive: false }).addTo(PLAN.layers);
+  if (reloadElevation) scheduleElevation(); else drawHills();
+  renderPlanStats(); renderPlanSimilar(); updateChatContext();
+}
+let elevTimer;
+function scheduleElevation() {
+  clearTimeout(elevTimer); PLAN.elevVer++; PLAN.samples = []; drawHills(); renderPlanElev();
+  if (PLAN.cs.length > 1) elevTimer = setTimeout(loadElevation, 350);
+}
+function samplePoints(cs, cum, step) {
+  const total = cum.at(-1), out = [];
+  for (let d = 0; d < total; d += step) out.push({ d, ll: along(cs, cum, d) });
+  out.push({ d: total, ll: cs.at(-1) });
+  return out;
+}
+async function loadElevation() {
+  const ver = PLAN.elevVer, cs = PLAN.cs, cum = PLAN.cum;
+  const pts = samplePoints(cs, cum, Math.max(40, cum.at(-1) / 600));
+  const key = p => `${p.ll[0].toFixed(4)},${p.ll[1].toFixed(4)}`;
+  const missing = [...new Set(pts.map(key))].filter(k => !ELEV_CACHE.has(k));
+  try {
+    for (let i = 0; i < missing.length; i += 100) {
+      const chunk = missing.slice(i, i + 100);
+      const r = await fetch(`${ELEV_API}?latitude=${chunk.map(k => k.split(",")[0]).join(",")}&longitude=${chunk.map(k => k.split(",")[1]).join(",")}`).then(x => x.json());
+      if (!Array.isArray(r.elevation)) throw new Error(r.reason || "bad response");
+      chunk.forEach((k, j) => ELEV_CACHE.set(k, r.elevation[j]));
+    }
+  } catch {
+    if (ver === PLAN.elevVer) { planStatus("Couldn't reach the elevation service; distance is still accurate."); $("planReadout").textContent = "Elevation unavailable"; }
+    return;
+  }
+  if (ver !== PLAN.elevVer) return;
+  const raw = pts.map(p => ELEV_CACHE.get(key(p)) * FT);
+  pts.forEach((p, i) => { p.ele = mean(raw.slice(Math.max(0, i - 3), i + 4)); }); // terrain model steps every ~90 m and includes trees/buildings
+  pts.forEach((p, i) => { const a = pts[Math.max(0, i - 2)], b = pts[Math.min(pts.length - 1, i + 2)]; p.grade = b.d > a.d ? (b.ele - a.ele) / FT / (b.d - a.d) * 100 : 0; });
+  PLAN.samples = pts;
+  renderPlanStats(); renderPlanElev(); drawHills(); updateChatContext();
+}
+function planClimb(pts) {
+  let up = 0, down = 0, ref = pts[0].ele;
+  for (const p of pts) { const d = p.ele - ref; if (d > 6) { up += d; ref = p.ele; } else if (d < -6) { down -= d; ref = p.ele; } }
+  return { up, down };
+}
+function steepest(pts, win = 200) {
+  let best = null;
+  for (let i = 0, j = 0; i < pts.length; i++) {
+    while (j < pts.length - 1 && pts[j].d - pts[i].d < win) j++;
+    if (pts[j].d - pts[i].d < win * 0.9) break;
+    const g = (pts[j].ele - pts[i].ele) / FT / (pts[j].d - pts[i].d) * 100;
+    if (best == null || g > best.g) best = { g, d: pts[i].d };
+  }
+  return best;
+}
+function planTime(pace) {
+  const pts = PLAN.samples, total = PLAN.cum.at(-1) || 0;
+  if (pts.length < 2) return total / M_PER_MI * pace;
+  let t = 0;
+  for (let i = 1; i < pts.length; i++) { const dm = pts[i].d - pts[i - 1].d; if (dm > 0) t += dm / M_PER_MI * pace * costRatio((pts[i].ele - pts[i - 1].ele) / FT / dm); }
+  return t;
+}
+function planSummary() {
+  const total = (PLAN.cum.at(-1) || 0) / M_PER_MI, pts = PLAN.samples, pace = planPace(), c = pts.length > 1 ? planClimb(pts) : null;
+  const sum = { distanceMi: +total.toFixed(2), flatPace: fmtPace(pace), estTime: fmtDur(planTime(pace)), elevationLoaded: !!c,
+    startsAndEndsSamePlace: PLAN.cs.length > 2 && hav(PLAN.cs[0], PLAN.cs.at(-1)) < 80, waypoints: PLAN.wps.length };
+  if (c) Object.assign(sum, { climbFt: Math.round(c.up), descentFt: Math.round(c.down), highestFt: Math.round(Math.max(...pts.map(p => p.ele))),
+    lowestFt: Math.round(Math.min(...pts.map(p => p.ele))), steepestPct: +(steepest(pts)?.g ?? 0).toFixed(1),
+    elevationEveryHalfMile: pts.filter((p, i) => i === 0 || Math.floor(p.d / 804.672) > Math.floor(pts[i - 1].d / 804.672)).map(p => [+(p.d / M_PER_MI).toFixed(1), Math.round(p.ele)]) });
+  if (PLAN.similar?.length) sum.similarPastRuns = PLAN.similar.slice(0, 5).map(r => r.id);
+  return sum;
+}
+function renderPlanStats() {
+  const total = (PLAN.cum.at(-1) || 0) / M_PER_MI;
+  if (!total) { $("planStats").innerHTML = `<div class="empty" style="padding:16px 0">Click the map to start a route.</div>`; return; }
+  const pts = PLAN.samples, have = pts.length > 1, pace = planPace(), t = planTime(pace);
+  const c = have ? planClimb(pts) : null, st = have ? steepest(pts) : null;
+  const row = (l, v, sub = "") => `<dt>${l}</dt><dd>${v}${sub ? `<span>${sub}</span>` : ""}</dd>`;
+  const wait = `<span class="typing">loading</span>`;
+  $("planStats").innerHTML = `<dl class="pbs">` +
+    row("Distance", `${total.toFixed(2)} mi`, `${(total * 1.609344).toFixed(2)} km`) +
+    row("Climb / descent", have ? `↑ ${Math.round(c.up)} ft` : wait, have ? `↓ ${Math.round(c.down)} ft` : "") +
+    row("Highest / lowest", have ? `${Math.round(Math.max(...pts.map(p => p.ele)))} / ${Math.round(Math.min(...pts.map(p => p.ele)))} ft` : wait) +
+    row("Steepest climb", have && st ? `${st.g.toFixed(1)}%` : have ? "–" : wait, have && st ? `over 200 m at mile ${(st.d / M_PER_MI).toFixed(1)}` : "") +
+    row("Estimated time", fmtDur(t), `${fmtPace(t / total)}/mi with hills · ${fmtDur(total * pace)} if flat`) + `</dl>`;
+}
+function renderPlanSimilar() {
+  const cs = PLAN.cs, total = (PLAN.cum.at(-1) || 0) / M_PER_MI;
+  PLAN.similar = [];
+  if (cs.length < 2 || total < 0.3) { $("planSimilar").textContent = "Draw a route to find past runs on similar ground."; return; }
+  const pool = NO_RUNS ? (DAILY?.walks || []).map(w => ({ ...w, pace: w.dist ? w.dur / w.dist : null })) : RUNS;
+  const mid = cs[cs.length >> 1], q1 = cs[cs.length >> 2], q3 = cs[(cs.length * 3) >> 2];
+  const near = (route, p, m) => route.some(x => hav(x, p) < m);
+  const m = pool.filter(r => r.route && r.dist && Math.abs(r.dist - total) / total < 0.15 && hav(r.route[0], cs[0]) < 400 &&
+    near(r.route, mid, 250) && near(r.route, q1, 250) && near(r.route, q3, 250)).sort((a, b) => b.date - a.date);
+  PLAN.similar = m;
+  if (!m.length) { $("planSimilar").textContent = `No past ${NO_RUNS ? "walks" : "runs"} on a similar route yet.`; return; }
+  const best = m.reduce((b, r) => !b || r.pace < b.pace ? r : b, null);
+  $("planSimilar").innerHTML = `You've done this route about <b>${m.length}</b> time${m.length > 1 ? "s" : ""}. Fastest ${fmtPace(best.pace)}/mi (${fmtDate(best.date)}), typical ${fmtPace(median(m.map(r => r.pace)))}/mi.` +
+    (NO_RUNS ? "" : `<div class="toolbar" style="margin-top:8px">${m.slice(0, 4).map(r => `<button class="ask-link" data-open="${r.id}">${fmtDate(r.date, { month: "short", day: "numeric", year: "2-digit" })} · ${fmtPace(r.pace)}</button>`).join("")}
+      ${m.length > 1 ? `<button class="ask-link" id="planCompareSimilar">Compare these →</button>` : ""}</div>`);
+  const cmp = $("planCompareSimilar");
+  if (cmp) cmp.onclick = () => { S.compare = m.slice(0, 4).map(r => r.id); setTab("compare"); };
+}
+function drawHills() {
+  PLAN.hillLayer?.remove(); PLAN.hillLayer = null; $("planLegend").innerHTML = "";
+  const pts = PLAN.samples;
+  if (!$("planHills").checked || pts.length < 2 || !PLAN.map) return;
+  // Diverging: blue downhill, neutral flat, orange uphill
+  const steps = [[-6, "#104281", "steep down"], [-3, "#2a78d6", ""], [-1, "#86b6ef", ""], [1, "#a9a8a1", "flat"], [3, "#f3a27a", ""], [6, "#eb6834", ""], [Infinity, "#b8410f", "steep up"]];
+  const col = g => steps.find(([lim]) => g < lim)[1];
+  const g = L.layerGroup();
+  for (let i = 1; i < pts.length; i++) L.polyline([pts[i - 1].ll, pts[i].ll], { color: col(pts[i].grade), weight: 6, opacity: 1, interactive: false }).addTo(g);
+  PLAN.hillLayer = g.addTo(PLAN.map);
+  $("planLegend").innerHTML = `<span>Downhill</span>${steps.map(([, c]) => `<span class="sw" style="background:${c};margin:0"></span>`).join("")}<span>Uphill</span><span style="color:var(--text-muted)">(over 1%, 3%, 6% grade)</span>`;
+}
+function planMarker(i) {
+  if (!PLAN.map) return;
+  if (i == null) { PLAN.marker?.remove(); PLAN.marker = null; return; }
+  const ll = PLAN.samples[i].ll;
+  if (!PLAN.marker) PLAN.marker = L.circleMarker(ll, { radius: 7, color: "#fff", weight: 3, fillColor: slot(2), fillOpacity: 1, interactive: false }).addTo(PLAN.map);
+  else PLAN.marker.setLatLng(ll);
+}
+function renderPlanElev() {
+  const pts = PLAN.samples;
+  destroyGroup("plan");
+  if (pts.length < 2) {
+    $("planReadout").innerHTML = PLAN.cs.length > 1 ? `<span class="typing">Loading elevation</span>` : "Draw a route to see its elevation profile.";
+    return;
+  }
+  const xs = pts.map(p => p.d / M_PER_MI), pace = planPace();
+  const readout = i => {
+    if (i == null) { $("planReadout").innerHTML = `<span style="color:var(--text-muted)">Hover the profile to find the spot on the map</span>`; return; }
+    const p = pts[i], tAt = PLAN.samples.length ? planTimeTo(i, pace) : 0;
+    $("planReadout").innerHTML = [["At", `${xs[i].toFixed(2)} mi`], ["Elevation", `${Math.round(p.ele)} ft`], ["Grade", `${signed(p.grade, 1)}%`], ["Time at your pace", fmtDur(tAt)]]
+      .map(([k, v]) => `<span><span class="k">${k}</span><b>${v}</b></span>`).join("");
+  };
+  const onMove = x => { if (x == null) { planMarker(null); readout(null); return; } const i = nearestIdx(xs, x); setHover("plan", xs[i]); planMarker(i); readout(i); };
+  draw("planElev", { type: "line", data: { datasets: [{ data: pts.map((p, i) => ({ x: xs[i], y: p.ele })), borderColor: css("--text-muted"), backgroundColor: alpha(css("--elev"), 0.35),
+      fill: "start", borderWidth: 1.5, tension: 0.3 }] },
+    options: laneOpts("plan", onMove, { scales: { x: { type: "linear", min: 0, max: xs.at(-1), ticks: { callback: v => +v.toFixed(1) + " mi", stepSize: xs.at(-1) > 8 ? 2 : 1 }, grid: { display: true, color: css("--grid") } },
+      y: { ticks: { callback: v => Math.round(v) + " ft", maxTicksLimit: 5 } } } }) });
+  groups.plan = ["planElev"];
+  readout(null);
+}
+function planTimeTo(i, pace) {
+  let t = 0; const pts = PLAN.samples;
+  for (let k = 1; k <= i; k++) { const dm = pts[k].d - pts[k - 1].d; if (dm > 0) t += dm / M_PER_MI * pace * costRatio((pts[k].ele - pts[k - 1].ele) / FT / dm); }
+  return t;
+}
+/* Saved routes (per person, in this browser) and GPX */
+const routesKey = () => PROFILE ? `runlog-routes:${PROFILE}` : "runlog-routes";
+function loadRoutes() { try { return JSON.parse(localStorage.getItem(routesKey()) || "[]"); } catch { return []; } }
+function storeRoutes(list) { try { localStorage.setItem(routesKey(), JSON.stringify(list)); return true; } catch { return false; } }
+function renderSavedRoutes() {
+  const list = loadRoutes();
+  $("planSaved").innerHTML = list.length ? `<thead><tr><th class="l">Name</th><th>Distance</th><th>Climb</th><th>Saved</th><th></th></tr></thead><tbody>${list.map(r =>
+    `<tr><td class="l">${esc(r.name)}</td><td>${r.dist.toFixed(2)} mi</td><td>${r.up != null ? Math.round(r.up) + " ft" : "–"}</td><td>${fmtDate(new Date(r.created))}</td>
+      <td><button class="ask-link" data-load-route="${r.id}">Open</button> · <button class="ask-link" data-del-route="${r.id}">Delete</button></td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td class="empty">No saved routes yet</td></tr></tbody>`;
+}
+$("planSaved").addEventListener("click", e => {
+  const lo = e.target.closest("[data-load-route]"), del = e.target.closest("[data-del-route]");
+  const list = loadRoutes();
+  if (lo) { const r = list.find(x => x.id === lo.dataset.loadRoute); if (!r) return;
+    planQueue(() => { planSnapshot(); PLAN.wps = r.wps; PLAN.segs = r.segs; $("planName").value = r.name; drawPlan(); if (PLAN.cs.length > 1) PLAN.map.fitBounds(L.latLngBounds(PLAN.cs), { padding: [30, 30] }); }); }
+  if (del) { const r = list.find(x => x.id === del.dataset.delRoute); if (r && confirm(`Delete "${r.name}"?`)) { storeRoutes(list.filter(x => x !== r)); renderSavedRoutes(); } }
+});
+$("planSave").onclick = () => {
+  if (PLAN.cs.length < 2) return planStatus("Draw a route first.");
+  const name = $("planName").value.trim() || `Route ${new Date().toLocaleDateString()}`, c = PLAN.samples.length > 1 ? planClimb(PLAN.samples) : null;
+  const r5 = p => [+p[0].toFixed(5), +p[1].toFixed(5)];
+  const list = loadRoutes().filter(x => x.name !== name);
+  list.unshift({ id: Date.now().toString(36), name, created: new Date().toISOString(), dist: PLAN.cum.at(-1) / M_PER_MI, up: c?.up ?? null,
+    wps: PLAN.wps.map(r5), segs: PLAN.segs.map(sg => ({ snapped: sg.snapped, coords: sg.coords.map(r5) })) });
+  if (!storeRoutes(list)) return planStatus("Couldn't save: this browser's storage is full or turned off.");
+  $("planName").value = name; renderSavedRoutes(); planStatus(`Saved "${name}".`);
+};
+$("planGpx").onclick = () => {
+  if (PLAN.cs.length < 2) return planStatus("Draw a route first.");
+  const name = $("planName").value.trim() || "Planned route", pts = PLAN.samples;
+  const eleAt = d => { if (pts.length < 2) return null; const i = nearestIdx(pts.map(p => p.d), d); return pts[i].ele / FT; };
+  const trk = PLAN.cs.map((p, i) => { const e = eleAt(PLAN.cum[i]); return `<trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}">${e != null ? `<ele>${e.toFixed(1)}</ele>` : ""}</trkpt>`; }).join("\n      ");
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="RunTrack" xmlns="http://www.topografix.com/GPX/1/1">\n  <trk><name>${esc(name)}</name>\n    <trkseg>\n      ${trk}\n    </trkseg>\n  </trk>\n</gpx>\n`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([gpx], { type: "application/gpx+xml" }));
+  a.download = `${name.replace(/[^\w-]+/g, "_")}.gpx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$("planImport").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const xml = new DOMParser().parseFromString(await f.text(), "application/xml");
+  const pts = [...xml.getElementsByTagName("trkpt"), ...xml.getElementsByTagName("rtept")].map(n => [+n.getAttribute("lat"), +n.getAttribute("lon")]).filter(p => isFinite(p[0]) && isFinite(p[1]));
+  if (pts.length < 2) return planStatus("No track points found in that file.");
+  const step = Math.max(1, Math.floor(pts.length / 2000)), cs = pts.filter((_, i) => i % step === 0);
+  if (cs.at(-1) !== pts.at(-1)) cs.push(pts.at(-1));
+  planQueue(() => { planSnapshot(); PLAN.wps = [cs[0], cs.at(-1)]; PLAN.segs = [{ coords: cs, snapped: true }]; $("planName").value = f.name.replace(/\.gpx$/i, "");
+    drawPlan(); PLAN.map.fitBounds(L.latLngBounds(cs), { padding: [30, 30] }); });
+};
+$("planAsk").onclick = () => {
+  if (PLAN.cs.length < 2) return planStatus("Draw a route first.");
+  askClaude("Look at the route I've planned (details are in plannedRoute). How should I pace it given the hills, what finish time is realistic for me right now, and is it a sensible choice given my recent training?");
+};
+async function renderPlan() {
+  if (NO_RUNS) await loadDaily();
+  if (S.tab !== "plan") return;
+  if (!window.L) { $("planMap").innerHTML = `<div class="empty">Map library unavailable offline</div>`; return; }
+  if (!PLAN.map) {
+    PLAN.map = L.map("planMap", { doubleClickZoom: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors · routing OSRM · elevation Open-Meteo" }).addTo(PLAN.map);
+    PLAN.layers = L.layerGroup().addTo(PLAN.map);
+    PLAN.map.on("click", e => planQueue(() => addPoint(e.latlng)));
+    const known = [...(RUNS || []).filter(r => r.route).slice(-60).flatMap(r => r.route), ...((NO_RUNS && DAILY?.walks) || []).filter(w => w.route).slice(-60).flatMap(w => w.route)];
+    frameDense(PLAN.map, known);
+  }
+  $("planMap").classList.toggle("dark", isDark());
+  setTimeout(() => PLAN.map.invalidateSize(), 0);
+  if (!$("planPace").value) { const d = defaultPace(); $("planPace").value = fmtPace(d.pace); $("planPaceNote").textContent = d.note; }
+  drawPlan(); renderSavedRoutes();
+  if (PLAN.pendingFit && PLAN.cs.length > 1) { PLAN.map.fitBounds(L.latLngBounds(PLAN.cs), { padding: [30, 30] }); PLAN.pendingFit = false; }
+}
+
 /* =====================================================================
    Tooltip for heat grids
    ===================================================================== */
@@ -1846,6 +2260,7 @@ const SUGGEST = {
   insights: ["Explain my fitness and fatigue trend", "Am I at risk of overtraining right now?", "Predict my 10K time and how to improve it"],
   run: ["Analyze this run mile by mile", "Why did my heart rate drift on this run?", "How does this run compare with similar runs I've done?"],
   activity: ["How active am I on days I don't run?", "When during the day am I most sedentary?", "How do my steps this year compare with previous years?"],
+  plan: ["How should I pace this route given the hills?", "Is this a good long run for me this week?", "What finish time should I expect on this route?"],
   health: ["Am I recovering well? Look at HRV, resting HR and sleep", "How has my heart fitness changed over the last year?", "What do my walking mobility metrics say about me?"],
   compare: ["Compare these runs and explain the differences", "Which run was the best effort relative to heart rate?", "What changed between the oldest and newest of these runs?"],
 };
@@ -1856,6 +2271,7 @@ function chatContext() {
   if (PROFILE) ctx.person = PROFILE;
   if (RANGED_TABS.includes(S.tab)) ctx.dateRange = RANGE_LABEL[S.rangeDays];
   if (S.tab === "activity") ctx.stepGoal = S.stepGoal;
+  if (S.tab === "plan" && PLAN.cs?.length > 1) ctx.plannedRoute = planSummary();
   if (S.tab === "run") ctx.selectedRun = brief(BY_ID[S.runId]);
   if (S.compare.length) ctx.compareRuns = S.compare.map(id => brief(BY_ID[id]));
   return ctx;
@@ -1864,7 +2280,8 @@ function updateChatContext() {
   if (!RUNS) return;
   const c = chatContext();
   $("chatCtx").innerHTML = "Context: " + (S.tab === "run" && c.selectedRun ? `<b>Run ${c.selectedRun.date} · ${c.selectedRun.dist} mi</b>`
-    : S.tab === "compare" ? `<b>Comparing ${S.compare.length} runs</b>` : `<b>${TAB_NAME[S.tab]} · ${c.dateRange}</b>`) +
+    : S.tab === "compare" ? `<b>Comparing ${S.compare.length} runs</b>`
+    : S.tab === "plan" ? `<b>Planned route${c.plannedRoute ? ` · ${c.plannedRoute.distanceMi} mi` : ""}</b>` : `<b>${TAB_NAME[S.tab]} · ${c.dateRange}</b>`) +
     (S.tab !== "compare" && S.compare.length ? ` · ${S.compare.length} queued to compare` : "");
   if (!CHAT.messages.length) renderMessages();
 }

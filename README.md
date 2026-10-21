@@ -19,12 +19,20 @@ chat panel that hands questions to Claude Code.
 - **Health**: a recovery check (HRV, resting HR, breathing rate, blood oxygen, walking HR against
   your own 60-day normal range), sleep duration, stages and schedule, heart-fitness trends, mobility
   (walking speed, step length, asymmetry, double support, steadiness), daylight and noise exposure.
+- **Plan**: draw a route on the map that follows roads and paths, with live distance, mile
+  markers, climb and descent, an elevation profile, hill-colored route, and a time estimate from your
+  own recent pace adjusted for hills. Turn it into an out-and-back for a target distance or loop it
+  back to the start; see past runs on the same route; save routes, export GPX for your watch, or
+  import one. "Plan from this route" on any run loads its GPS track. Routing uses the free OSRM
+  service at routing.openstreetmap.de and elevation comes from Open-Meteo; only the points you place
+  are sent to them.
 - **Ask Claude**: a side panel that runs `claude -p` in this folder, using whatever account the
   Claude Code CLI is logged into. It knows which tab and run you're looking at and can read the
   generated data files and run `python3` to analyse them. It has no other tools.
 
 Everything runs on your machine. Your health data is never uploaded anywhere. The only network
-requests are for map tiles (OpenStreetMap) and the chart and map libraries (cdnjs).
+requests are for map tiles (OpenStreetMap), the chart and map libraries (cdnjs), and, when you use the
+Plan tab, routing and elevation lookups for the points you place.
 
 ## Setup
 
