@@ -23,9 +23,9 @@ chat panel that hands questions to Claude Code.
   markers, climb and descent, an elevation profile, hill-colored route, and a time estimate from your
   own recent pace adjusted for hills. Turn it into an out-and-back for a target distance or loop it
   back to the start; see past runs on the same route; save routes, export GPX for your watch, or
-  import one. "Plan from this route" on any run loads its GPS track. Routing uses the free OSRM
-  service at routing.openstreetmap.de and elevation comes from Open-Meteo; only the points you place
-  are sent to them.
+  import one. "Plan from this route" on any run loads its GPS track. With a Mapbox token you can
+  also search for an address or place. Only the points you place (and your searches) are sent to the
+  routing, search and elevation services.
 - **Ask Claude**: a side panel that runs `claude -p` in this folder, using whatever account the
   Claude Code CLI is logged into. It knows which tab and run you're looking at and can read the
   generated data files and run `python3` to analyse them. It has no other tools.
@@ -62,6 +62,26 @@ and everything generated from it, stays in a private folder that is never part o
    export RUNTRACK_EXPORT=~/health/apple_health_export
    python3 build_running_data.py && python3 server.py
    ```
+
+### Mapbox (optional)
+
+With a free Mapbox account you get Mapbox map styles (Outdoors, Streets, Satellite, Dark) on every map,
+address and place search in the planner, and Mapbox walking directions. Personal use stays inside
+Mapbox's free tier. Create a public token (starts with `pk.`) at https://console.mapbox.com, then:
+
+```sh
+python3 server.py --set-mapbox-token pk.xxxx   # saves to ~/.config/runtrack/config.json (owner-only)
+python3 server.py --clear-mapbox-token         # remove it
+```
+
+Run the first command again with a new token to replace it; refresh the page and it takes effect. A `MAPBOX_TOKEN`
+environment variable overrides the saved one. The token is never stored in this repo. Because a
+public token is visible to the browser, add a URL restriction for `http://localhost:8765` in the
+Mapbox console.
+
+Without a token the dashboard uses free OpenStreetMap tiles and OSRM routing. Either way, planner
+elevation comes from the USGS 3DEP lidar service (1 m resolution in much of the US, free), falling
+back to Open-Meteo's 90 m model outside the US.
 
 ### Several people
 

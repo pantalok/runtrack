@@ -172,6 +172,14 @@ td.best span { font-weight: 700; }
 .bar-track { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-top: 6px; }
 .bar-track div { height: 100%; background: var(--series-1); border-radius: 4px; }
 .plan-map { height: 560px; cursor: crosshair; }
+.plan-search { position: relative; margin-bottom: 10px; }
+.plan-search input { width: 100%; padding: 8px 12px; font-size: 14px; }
+.search-results { position: absolute; z-index: 1000; left: 0; right: 0; top: calc(100% + 4px); background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.25); max-height: 300px; overflow-y: auto; }
+.search-results button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 12px; cursor: pointer; font-size: 13.5px; }
+.search-results button:hover, .search-results button:focus { background: var(--surface-2); outline: none; }
+.search-results small { display: block; color: var(--text-muted); font-size: 12px; }
+.found-pop .btn { margin-right: 6px; }
 .plan-tools { margin: 6px 0 10px; }
 .plan-tools .divider { width: 1px; height: 24px; background: var(--border); }
 .inline { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text-secondary); }
@@ -543,7 +551,7 @@ input.btn { cursor: text; }
     <div class="grid">
       <div class="card span-8">
         <div class="card-head">
-          <div><h2>Route planner</h2><p class="hint">Click the map to add points; drag a point to move it. Mile markers appear as you go.</p></div>
+          <div><h2>Route planner</h2><p class="hint">Click the map to add points; drag a point to move it. Mile markers appear as you go. <span id="planRouter"></span></p></div>
           <label class="inline"><input type="checkbox" id="planSnap" checked> Follow roads &amp; paths</label>
         </div>
         <div class="toolbar plan-tools">
@@ -558,13 +566,17 @@ input.btn { cursor: text; }
           <span class="divider"></span>
           <label class="inline"><input type="checkbox" id="planHills"> Color hills</label>
         </div>
+        <div class="plan-search" id="planSearchWrap" hidden>
+          <input class="btn" id="planSearch" placeholder="Search an address or place…" autocomplete="off" aria-label="Search an address or place">
+          <div class="search-results" id="planResults" hidden></div>
+        </div>
         <div class="map plan-map" id="planMap"></div>
         <div class="legend" id="planLegend"></div>
         <p class="note" id="planStatus"></p>
       </div>
       <div class="card span-4">
         <h2>This route</h2>
-        <p class="hint">Elevation from a 90 m terrain model, so short bumps are smoothed out</p>
+        <p class="hint" id="planElevSrc">Elevation loads once you draw a route</p>
         <div id="planStats"></div>
         <label class="inline" style="margin-top:14px">Your flat pace <input class="btn num" id="planPace" placeholder="10:00"> /mi</label>
         <p class="note" id="planPaceNote" style="margin-top:6px"></p>
@@ -590,7 +602,7 @@ input.btn { cursor: text; }
         <div class="table-wrap"><table id="planSaved"></table></div>
       </div>
     </div>
-    <p class="note">Planning sends only the points you place to two free services: routing.openstreetmap.de (OSRM) to follow roads and paths, and Open-Meteo for elevation. None of your health data is sent.</p>
+    <p class="note" id="planNote"></p>
   </section>
 
   <div class="compare-bar" id="compareBar" hidden>
@@ -781,14 +793,32 @@ function laneHover(group, onMove) {
    Maps
    ===================================================================== */
 const MAPS = {};
+/* Base maps: Mapbox styles when a token is configured (server.py --set-mapbox-token), else OpenStreetMap */
+let MAPBOX = null;
+const MB_STYLES = { Outdoors: "outdoors-v12", Streets: "streets-v12", Satellite: "satellite-streets-v12", Dark: "dark-v11" };
+function addBaseLayers(map) {
+  if (!MAPBOX) {
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+    return;
+  }
+  const attr = '© <a href="https://www.mapbox.com/about/maps/" target="_blank">Mapbox</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> <a href="https://www.mapbox.com/map-feedback/" target="_blank">Improve this map</a>';
+  const layers = Object.fromEntries(Object.entries(MB_STYLES).map(([name, id]) => [name,
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/${id}/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX}`, { tileSize: 512, zoomOffset: -1, maxZoom: 20, attribution: attr })]));
+  let pick = null;
+  try { pick = localStorage.getItem("runlog-map-style"); } catch {}
+  if (!layers[pick]) pick = isDark() ? "Dark" : "Outdoors";
+  layers[pick].addTo(map);
+  L.control.layers(layers, null, { position: "topright" }).addTo(map);
+  map.on("baselayerchange", e => { try { localStorage.setItem("runlog-map-style", e.name); } catch {} });
+}
 function getMap(id) {
   if (!window.L) { $(id).innerHTML = `<div class="empty">Map library unavailable offline</div>`; return null; }
   if (!MAPS[id]) {
     const m = L.map(id, { scrollWheelZoom: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(m);
+    addBaseLayers(m);
     MAPS[id] = { map: m, layers: L.layerGroup().addTo(m) };
   }
-  $(id).classList.toggle("dark", isDark());
+  $(id).classList.toggle("dark", isDark() && !MAPBOX); // dark OSM tiles are faked with a CSS filter
   setTimeout(() => MAPS[id].map.invalidateSize(), 0);
   MAPS[id].layers.clearLayers();
   return MAPS[id];
@@ -1940,18 +1970,24 @@ const costRatio = g => { // Minetti running cost vs flat, with downhill benefit 
 };
 function planSnapshot() { PLAN.undo.push(JSON.stringify({ wps: PLAN.wps, segs: PLAN.segs })); if (PLAN.undo.length > 60) PLAN.undo.shift(); }
 
+function routers(a, b) {
+  const pair = `${a[1]},${a[0]};${b[1]},${b[0]}`;
+  const osrm = `${OSRM}${pair}?overview=full&geometries=geojson`;
+  return MAPBOX ? [`https://api.mapbox.com/directions/v5/mapbox/walking/${pair}?geometries=geojson&overview=full&access_token=${MAPBOX}`, osrm] : [osrm];
+}
 async function routeLeg(a, b) {
   if (!$("planSnap").checked) return { coords: [a, b], snapped: false };
-  try {
-    const r = await fetch(`${OSRM}${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson`).then(x => x.json());
-    if (r.code !== "Ok" || !r.routes?.length) throw new Error(r.message || r.code);
-    const coords = r.routes[0].geometry.coordinates.map(([lo, la]) => [+la.toFixed(6), +lo.toFixed(6)]);
-    const loc = w => w?.location ? [+w.location[1].toFixed(6), +w.location[0].toFixed(6)] : null;
-    return { coords, snapped: true, start: loc(r.waypoints?.[0]), end: loc(r.waypoints?.[1]) };
-  } catch {
-    planStatus("Couldn't reach the routing service, so that leg is a straight line. Try again or untick “Follow roads”.");
-    return { coords: [a, b], snapped: false };
+  for (const url of routers(a, b)) { // Mapbox and OSRM return the same shape
+    try {
+      const r = await fetch(url).then(x => x.json());
+      if (r.code !== "Ok" || !r.routes?.length) throw new Error(r.message || r.code);
+      const coords = r.routes[0].geometry.coordinates.map(([lo, la]) => [+la.toFixed(6), +lo.toFixed(6)]);
+      const loc = w => w?.location ? [+w.location[1].toFixed(6), +w.location[0].toFixed(6)] : null;
+      return { coords, snapped: true, start: loc(r.waypoints?.[0]), end: loc(r.waypoints?.[1]) };
+    } catch {}
   }
+  planStatus("Couldn't reach a routing service, so that leg is a straight line. Try again or untick “Follow roads”.");
+  return { coords: [a, b], snapped: false };
 }
 const segOf = l => ({ coords: l.coords, snapped: l.snapped });
 async function addPoint(ll) {
@@ -2035,32 +2071,54 @@ function samplePoints(cs, cum, step) {
   out.push({ d: total, ll: cs.at(-1) });
   return out;
 }
+const USGS_ELEV = "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples";
+const inUSGS = k => { const [la, lo] = k.split(",").map(Number); return la > 17 && la < 72 && lo > -180 && lo < -64; };
+async function usgsElevations(keys) { // USGS 3DEP bare-earth lidar: 1 m in much of the US, ~10 m elsewhere in the US
+  const out = new Map();
+  for (let i = 0; i < keys.length; i += 400) {
+    const chunk = keys.slice(i, i + 400);
+    const body = new URLSearchParams({ geometryType: "esriGeometryMultipoint", returnFirstValueOnly: "true", f: "json",
+      geometry: JSON.stringify({ points: chunk.map(k => k.split(",").map(Number).reverse()), spatialReference: { wkid: 4326 } }) });
+    const r = await fetch(USGS_ELEV, { method: "POST", body }).then(x => x.json());
+    (r.samples || []).forEach(sm => { const v = parseFloat(sm.value); if (isFinite(v) && v > -500) out.set(chunk[sm.locationId], { m: v, src: "usgs", res: sm.resolution }); });
+  }
+  return out;
+}
 async function loadElevation() {
   const ver = PLAN.elevVer, cs = PLAN.cs, cum = PLAN.cum;
-  const pts = samplePoints(cs, cum, Math.max(40, cum.at(-1) / 600));
-  const key = p => `${p.ll[0].toFixed(4)},${p.ll[1].toFixed(4)}`;
-  const missing = [...new Set(pts.map(key))].filter(k => !ELEV_CACHE.has(k));
+  const pts = samplePoints(cs, cum, Math.max(25, cum.at(-1) / 800));
+  const key = p => `${p.ll[0].toFixed(5)},${p.ll[1].toFixed(5)}`;
+  let missing = [...new Set(pts.map(key))].filter(k => !ELEV_CACHE.has(k));
+  try { (await usgsElevations(missing.filter(inUSGS))).forEach((v, k) => ELEV_CACHE.set(k, v)); } catch {}
+  missing = missing.filter(k => !ELEV_CACHE.has(k));
   try {
     for (let i = 0; i < missing.length; i += 100) {
       const chunk = missing.slice(i, i + 100);
       const r = await fetch(`${ELEV_API}?latitude=${chunk.map(k => k.split(",")[0]).join(",")}&longitude=${chunk.map(k => k.split(",")[1]).join(",")}`).then(x => x.json());
       if (!Array.isArray(r.elevation)) throw new Error(r.reason || "bad response");
-      chunk.forEach((k, j) => ELEV_CACHE.set(k, r.elevation[j]));
+      chunk.forEach((k, j) => ELEV_CACHE.set(k, { m: r.elevation[j], src: "om" }));
     }
   } catch {
-    if (ver === PLAN.elevVer) { planStatus("Couldn't reach the elevation service; distance is still accurate."); $("planReadout").textContent = "Elevation unavailable"; }
+    if (ver === PLAN.elevVer) { planStatus("Couldn't reach the elevation services; distance is still accurate."); $("planReadout").textContent = "Elevation unavailable"; }
     return;
   }
   if (ver !== PLAN.elevVer) return;
-  const raw = pts.map(p => ELEV_CACHE.get(key(p)) * FT);
-  pts.forEach((p, i) => { p.ele = mean(raw.slice(Math.max(0, i - 3), i + 4)); }); // terrain model steps every ~90 m and includes trees/buildings
+  const vals = pts.map(p => ELEV_CACHE.get(key(p)));
+  const lidar = vals.filter(v => v.src === "usgs").length / vals.length > 0.8;
+  const raw = vals.map(v => v.m * FT), w = lidar ? 1 : 3; // coarse terrain models need more smoothing
+  pts.forEach((p, i) => { p.ele = mean(raw.slice(Math.max(0, i - w), i + w + 1)); });
   pts.forEach((p, i) => { const a = pts[Math.max(0, i - 2)], b = pts[Math.min(pts.length - 1, i + 2)]; p.grade = b.d > a.d ? (b.ele - a.ele) / FT / (b.d - a.d) * 100 : 0; });
   PLAN.samples = pts;
+  PLAN.climbThreshold = lidar ? 3 : 6;
+  const res = median(vals.map(v => v.res).filter(Boolean));
+  $("planElevSrc").textContent = lidar ? `Elevation: USGS lidar, ${res && res <= 1.5 ? "1 m" : "about 10 m"} resolution (bare ground)`
+    : "Elevation: Open-Meteo 90 m terrain model, so short bumps are smoothed out";
   renderPlanStats(); renderPlanElev(); drawHills(); updateChatContext();
 }
 function planClimb(pts) {
   let up = 0, down = 0, ref = pts[0].ele;
-  for (const p of pts) { const d = p.ele - ref; if (d > 6) { up += d; ref = p.ele; } else if (d < -6) { down -= d; ref = p.ele; } }
+  const th = PLAN.climbThreshold || 6; // ignore wobbles smaller than the data can resolve
+  for (const p of pts) { const d = p.ele - ref; if (d > th) { up += d; ref = p.ele; } else if (d < -th) { down -= d; ref = p.ele; } }
   return { up, down };
 }
 function steepest(pts, win = 200) {
@@ -2222,19 +2280,73 @@ $("planAsk").onclick = () => {
   if (PLAN.cs.length < 2) return planStatus("Draw a route first.");
   askClaude("Look at the route I've planned (details are in plannedRoute). How should I pace it given the hills, what finish time is realistic for me right now, and is it a sensible choice given my recent training?");
 };
+/* Address / place search (Mapbox Search Box) */
+let searchTimer, searchAbort;
+$("planSearch").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 3) { $("planResults").hidden = true; return; }
+  searchTimer = setTimeout(() => runSearch(q), 350);
+});
+$("planSearch").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); $("planResults").querySelector("[data-res]")?.click(); }
+  else if (e.key === "Escape") $("planResults").hidden = true;
+  else if (e.key === "ArrowDown") { e.preventDefault(); $("planResults").querySelector("[data-res]")?.focus(); }
+});
+$("planResults").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); e.target.nextElementSibling?.focus(); }
+  if (e.key === "ArrowUp") { e.preventDefault(); (e.target.previousElementSibling || $("planSearch")).focus(); }
+});
+document.addEventListener("click", e => { if (!e.target.closest(".plan-search")) $("planResults").hidden = true; });
+async function runSearch(q) {
+  if (!MAPBOX || !PLAN.map) return;
+  searchAbort?.abort(); searchAbort = new AbortController();
+  const c = PLAN.map.getCenter();
+  try {
+    const r = await fetch(`https://api.mapbox.com/search/searchbox/v1/forward?q=${encodeURIComponent(q)}&proximity=${c.lng.toFixed(4)},${c.lat.toFixed(4)}&limit=6&access_token=${MAPBOX}`,
+      { signal: searchAbort.signal }).then(x => x.json());
+    PLAN.results = r.features || [];
+    $("planResults").innerHTML = PLAN.results.length ? PLAN.results.map((f, i) =>
+      `<button data-res="${i}">${esc(f.properties.name || "")}<small>${esc(f.properties.place_formatted || f.properties.full_address || "")}</small></button>`).join("")
+      : `<div class="hint" style="padding:8px 12px;margin:0">${r.message ? esc(r.message) : "No matches"}</div>`;
+    $("planResults").hidden = false;
+  } catch (err) { if (err.name !== "AbortError") planStatus("Search is unavailable right now."); }
+}
+$("planResults").addEventListener("click", e => {
+  const b = e.target.closest("[data-res]"); if (!b) return;
+  const f = PLAN.results[+b.dataset.res], [lng, lat] = f.geometry.coordinates;
+  $("planResults").hidden = true; $("planSearch").value = f.properties.name || "";
+  showFound(lat, lng, f.properties.name || "", f.properties.place_formatted || "");
+});
+function showFound(lat, lng, name, place) {
+  PLAN.map.setView([lat, lng], 16);
+  const box = document.createElement("div");
+  box.className = "found-pop";
+  box.innerHTML = `<b>${esc(name)}</b><div style="font-size:12px;opacity:.75;margin:2px 0 8px">${esc(place)}</div>`;
+  const add = document.createElement("button");
+  add.className = "btn primary"; add.textContent = PLAN.wps.length ? "Add to route" : "Start route here";
+  add.onclick = () => { PLAN.map.closePopup(); planQueue(() => addPoint({ lat, lng })); };
+  box.appendChild(add);
+  L.popup({ closeOnClick: true }).setLatLng([lat, lng]).setContent(box).openOn(PLAN.map);
+}
 async function renderPlan() {
   if (NO_RUNS) await loadDaily();
   if (S.tab !== "plan") return;
   if (!window.L) { $("planMap").innerHTML = `<div class="empty">Map library unavailable offline</div>`; return; }
   if (!PLAN.map) {
     PLAN.map = L.map("planMap", { doubleClickZoom: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors · routing OSRM · elevation Open-Meteo" }).addTo(PLAN.map);
+    addBaseLayers(PLAN.map);
     PLAN.layers = L.layerGroup().addTo(PLAN.map);
     PLAN.map.on("click", e => planQueue(() => addPoint(e.latlng)));
     const known = [...(RUNS || []).filter(r => r.route).slice(-60).flatMap(r => r.route), ...((NO_RUNS && DAILY?.walks) || []).filter(w => w.route).slice(-60).flatMap(w => w.route)];
     frameDense(PLAN.map, known);
   }
-  $("planMap").classList.toggle("dark", isDark());
+  $("planMap").classList.toggle("dark", isDark() && !MAPBOX);
+  $("planSearchWrap").hidden = !MAPBOX;
+  $("planRouter").textContent = MAPBOX ? "Routing: Mapbox walking directions." : "Routing: OSRM (free). Add a Mapbox token for address search and Mapbox routing.";
+  $("planNote").textContent = MAPBOX
+    ? "Planning sends the points you place and your searches to Mapbox, and route points to USGS and Open-Meteo for elevation. None of your health data is sent."
+    : "Planning sends only the points you place to routing.openstreetmap.de (OSRM) for routing, and to USGS and Open-Meteo for elevation. None of your health data is sent.";
   setTimeout(() => PLAN.map.invalidateSize(), 0);
   if (!$("planPace").value) { const d = defaultPace(); $("planPace").value = fmtPace(d.pace); $("planPaceNote").textContent = d.note; }
   drawPlan(); renderSavedRoutes();
@@ -2399,6 +2511,7 @@ async function boot() {
   let session = null;
   try { session = await fetch("api/session").then(r => r.json()); } catch {}
   CHAT.token = session?.claude ? session.token : false;
+  MAPBOX = session?.mapboxToken || null;
   setupProfiles(session?.profiles);
   let res;
   try { res = await fetch(dataUrl("data/summary.json")); } catch { res = null; }

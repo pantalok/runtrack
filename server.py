@@ -9,6 +9,12 @@ people in the page; label them with Name=path, e.g.
     python3 server.py Me=~/health/mine Partner=~/health/theirs
 The dashboard page is served from this repo; data/*.json is served from the selected folder.
 
+Mapbox (optional: map styles, address search, walking directions) uses a public "pk." token
+kept outside the repo in ~/.config/runtrack/config.json (or the MAPBOX_TOKEN env var):
+    python3 server.py --set-mapbox-token pk.xxxx      # save or replace
+    python3 server.py --clear-mapbox-token            # remove
+It is re-read on every page load, so a new token takes effect after a refresh.
+
 The chat runs `claude -p` (the Claude Code CLI) inside the selected folder, so it uses whatever
 account `claude` is logged into (your Claude subscription), not an API key.
 Claude can read the files in data/ and run python3 to analyse them; nothing else.
@@ -28,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 CODE = Path(__file__).parent.resolve()   # where running.html lives
+CONFIG_PATH = Path(os.environ.get("RUNTRACK_CONFIG") or "~/.config/runtrack/config.json").expanduser()
 WORKSPACES = {}                            # profile name -> private export folder, set in main()
 TOKEN = secrets.token_urlsafe(24)
 MODELS = {"opus", "sonnet", "haiku", "fable"}
@@ -100,7 +107,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         path = url.path.lstrip("/") or "running.html"
         if path == "api/session":
-            return self._send(200, {"token": TOKEN, "claude": bool(shutil.which("claude")), "profiles": list(WORKSPACES)})
+            return self._send(200, {"token": TOKEN, "claude": bool(shutil.which("claude")), "profiles": list(WORKSPACES),
+                                    "mapboxToken": mapbox_token()[0]})
         ws = workspace(parse_qs(url.query).get("profile", [None])[0])
         target = (CODE / path).resolve() if path in STATIC else (ws / path).resolve()
         allowed = path in STATIC or (target.is_relative_to(ws / "data") and target.suffix == ".json")
@@ -161,6 +169,28 @@ class Handler(BaseHTTPRequestHandler):
                 proc.kill()
 
 
+def load_config():
+    try:
+        return json.loads(CONFIG_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(cfg):
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+    CONFIG_PATH.chmod(0o600)
+
+
+def mapbox_token():
+    """(token, where it came from). Only public pk. tokens: the page needs it in the browser."""
+    if os.environ.get("MAPBOX_TOKEN"):
+        tok, src = os.environ["MAPBOX_TOKEN"].strip(), "MAPBOX_TOKEN"
+    else:
+        tok, src = (load_config().get("mapbox_token") or "").strip(), str(CONFIG_PATH)
+    return (tok, src) if tok.startswith("pk.") else (None, src)
+
+
 def workspace(name):
     """The export folder for a profile name; unknown or missing names get the first one."""
     return WORKSPACES.get(name) or next(iter(WORKSPACES.values()))
@@ -203,7 +233,22 @@ def main():
                     help="apple_health_export folder(s) (default: $RUNTRACK_EXPORT, then current directory)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
+    ap.add_argument("--set-mapbox-token", metavar="TOKEN", help="save (or replace) your Mapbox public token, then exit")
+    ap.add_argument("--clear-mapbox-token", action="store_true", help="remove the saved Mapbox token, then exit")
     args = ap.parse_args()
+    if args.set_mapbox_token is not None or args.clear_mapbox_token:
+        cfg = load_config()
+        if args.clear_mapbox_token:
+            cfg.pop("mapbox_token", None)
+            msg = "Removed the Mapbox token."
+        else:
+            tok = args.set_mapbox_token.strip()
+            if not tok.startswith("pk."):
+                raise SystemExit("That isn't a public Mapbox token (they start with 'pk.'). Secret 'sk.' tokens must not be used in a web page.")
+            cfg["mapbox_token"] = tok
+            msg = f"Saved Mapbox token {tok[:12]}…{tok[-4:]}."
+        save_config(cfg)
+        raise SystemExit(f"{msg} ({CONFIG_PATH}, readable only by you)")
     for spec in args.export_dirs or [os.environ.get("RUNTRACK_EXPORT") or "."]:
         name, sep, folder = spec.partition("=")
         if not sep:
@@ -217,6 +262,8 @@ def main():
             raise SystemExit(f"Two folders are both named {name!r}; label them with Name=path.")
         WORKSPACES[name] = path
         print(f"Profile {name!r}: {path}")
+    tok, src = mapbox_token()
+    print(f"Mapbox: on (token from {src})" if tok else "Mapbox: off (free OpenStreetMap tiles and OSRM routing). Add a token with --set-mapbox-token pk...")
     url = f"http://localhost:{args.port}/"
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Running Log at {url}  (Ctrl-C to stop)")
